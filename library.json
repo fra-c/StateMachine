@@ -1,0 +1,23 @@
+{
+  "name": "Minimalistic State Machine",
+  "version": "0.0.1",
+  "description": "A minimalistic, class based Finite State Machine.",
+  "keywords": "state, state machine, fsm, minimalistic state machine, statemachine",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/fra-c/StateMachine.git"
+  },
+  "authors":
+  [
+    {
+      "name": "Fra-c",
+      "email": "fra-c@fmvisual.com",
+      "url": "https://github.com/fra-c"
+    }
+  ],
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/fra-c/StateMachine",
+  "frameworks": "*",
+  "platforms": "*"
+}
