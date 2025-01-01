@@ -60,4 +60,4 @@ private:
     size_t transitionCount;
 };
 
-#endif;
+#endif

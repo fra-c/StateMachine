@@ -1,6 +1,6 @@
 {
   "name": "Minimalistic State Machine",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A minimalistic, class based Finite State Machine.",
   "keywords": "state, state machine, fsm, minimalistic state machine, statemachine",
   "repository":
