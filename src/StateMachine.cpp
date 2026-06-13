@@ -23,17 +23,36 @@ void StateMachineBase::addTransition(State* from, State* to, Condition* conditio
     }
 }
 
-void StateMachineBase::update() {
+void StateMachineBase::onUpdate() {
     if (currentState) {
         for (size_t i = 0; i < transitionCount; ++i) {
             const Transition& transition = transitions[i];
-            if (transition.from == currentState && transition.condition->evaluate()) {
-                setState(transition.to);
-                return;
+            if ((transition.from == currentState || transition.from == nullptr) && transition.condition->evaluate()) {
+                // Prevent endless re-entry loops if a global condition stays true
+                if (currentState != transition.to) {
+                    setState(transition.to);
+                    return;
+                }
             }
         }
         currentState->onUpdate();
     }
+}
+
+void StateMachineBase::onEnter() {
+    if (currentState) {
+        currentState->onEnter();
+    }
+}
+
+void StateMachineBase::onExit() {
+    if (currentState) {
+        currentState->onExit();
+    }
+}
+
+bool StateMachineBase::isFinished() {
+    return currentState ? currentState->isFinished() : true;
 }
 
 bool StateMachineBase::isInState(const State* state) const {

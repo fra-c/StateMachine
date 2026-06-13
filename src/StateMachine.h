@@ -10,6 +10,7 @@ public:
     virtual void onEnter() {}
     virtual void onUpdate() {}
     virtual void onExit() {}
+    virtual bool isFinished() { return false; }
 };
 
 class Condition {
@@ -24,14 +25,17 @@ struct Transition {
     Condition* condition;
 };
 
-class StateMachineBase {
+class StateMachineBase : public State {
 public:
     StateMachineBase(Transition* transitionsArray, size_t maxTransitions);
 
     void setState(State* state);
     State* getState() const;
     void addTransition(State* from, State* to, Condition* condition);
-    void update();
+    void onUpdate() override;
+    void onEnter() override;
+    void onExit() override;
+    bool isFinished() override;
     bool isInState(const State* state) const;
 
 private:
