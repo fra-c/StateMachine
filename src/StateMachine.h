@@ -12,10 +12,16 @@ public:
     virtual void onExit() {}
 };
 
+class Condition {
+public:
+    virtual ~Condition() = default;
+    virtual bool evaluate() = 0;
+};
+
 struct Transition {
     State* from;
     State* to;
-    bool (*condition)(void);
+    Condition* condition;
 };
 
 class StateMachineBase {
@@ -24,7 +30,7 @@ public:
 
     void setState(State* state);
     State* getState() const;
-    void addTransition(State* from, State* to, bool (*condition)(void));
+    void addTransition(State* from, State* to, Condition* condition);
     void update();
     bool isInState(const State* state) const;
 

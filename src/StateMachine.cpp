@@ -17,7 +17,7 @@ State* StateMachineBase::getState() const {
     return currentState;
 }
 
-void StateMachineBase::addTransition(State* from, State* to, bool (*condition)(void)) {
+void StateMachineBase::addTransition(State* from, State* to, Condition* condition) {
     if (transitionCount < maxTransitions) {
         transitions[transitionCount++] = {from, to, condition};
     }
@@ -27,7 +27,7 @@ void StateMachineBase::update() {
     if (currentState) {
         for (size_t i = 0; i < transitionCount; ++i) {
             const Transition& transition = transitions[i];
-            if (transition.from == currentState && transition.condition()) {
+            if (transition.from == currentState && transition.condition->evaluate()) {
                 setState(transition.to);
                 return;
             }

@@ -34,14 +34,21 @@ StateMachine<2> stateMachine;
 IdleState idleState;
 ActiveState activeState;
 
-// Declare condition functions
-bool shouldActivate() {
-  return digitalRead(1) == HIGH;
-}
+// Define a condition class that checks a pin state
+class PinCondition : public Condition {
+    int _pin;
+    int _targetState;
+public:
+    PinCondition(int pin, int targetState) : _pin(pin), _targetState(targetState) {}
 
-bool shouldIdle() {
-  return digitalRead(1) == LOW;
-}
+    bool evaluate() override {
+        return digitalRead(_pin) == _targetState;
+    }
+};
+
+// Instantiate the conditions
+PinCondition shouldActivate(1, HIGH);
+PinCondition shouldIdle(1, LOW);
 
 void setup() {
   Serial.begin(115200);

@@ -12,8 +12,12 @@ public:
     void onExit() override { exitCount++; }
 };
 
-bool conditionTrue() { return true; }
-bool conditionFalse() { return false; }
+class MockCondition : public Condition {
+public:
+    bool result;
+    MockCondition(bool r = true) : result(r) {}
+    bool evaluate() override { return result; }
+};
 
 TEST(StateMachineTest, InitialState) {
     StateMachine<2> sm;
@@ -52,8 +56,9 @@ TEST(StateMachineTest, DoesNotTransitionOnFalseCondition) {
     StateMachine<2> sm;
     MockState state1;
     MockState state2;
+    MockCondition condFalse(false);
 
-    sm.addTransition(&state1, &state2, conditionFalse);
+    sm.addTransition(&state1, &state2, &condFalse);
     sm.setState(&state1);
     sm.update();
 
@@ -65,8 +70,9 @@ TEST(StateMachineTest, TransitionsOnTrueCondition) {
     StateMachine<2> sm;
     MockState state1;
     MockState state2;
+    MockCondition condTrue(true);
 
-    sm.addTransition(&state1, &state2, conditionTrue);
+    sm.addTransition(&state1, &state2, &condTrue);
     sm.setState(&state1);
     sm.update(); // Should transition to state2
 
@@ -81,11 +87,13 @@ TEST(StateMachineTest, MaxTransitionsLimit) {
     MockState state1;
     MockState state2;
     MockState state3;
+    MockCondition condTrue(true);
+    MockCondition condFalse(false);
 
     // We can only add 1 transition
-    sm.addTransition(&state1, &state2, conditionFalse);
+    sm.addTransition(&state1, &state2, &condFalse);
     // This second one should be ignored
-    sm.addTransition(&state2, &state3, conditionTrue);
+    sm.addTransition(&state2, &state3, &condTrue);
 
     sm.setState(&state2);
     sm.update();
