@@ -1,6 +1,8 @@
 #ifndef STATE_MACHINE_H
 #define STATE_MACHINE_H
 
+#include <stddef.h>
+
 class State {
 public:
     virtual ~State() = default;
@@ -10,54 +12,36 @@ public:
     virtual void onExit() {}
 };
 
-template <size_t MAX_TRANSITIONS>
-class StateMachine {
+struct Transition {
+    State* from;
+    State* to;
+    bool (*condition)(void);
+};
+
+class StateMachineBase {
 public:
-    StateMachine() : currentState(nullptr), transitionCount(0) {}
+    StateMachineBase(Transition* transitionsArray, size_t maxTransitions);
 
-    void setState(State* state) {
-        if (currentState) {
-            currentState->onExit();
-        }
-        currentState = state;
-        if (currentState) {
-            currentState->onEnter();
-        }
-    }
-
-    void addTransition(State* from, State* to, bool (*condition)(void)) {
-        if (transitionCount < MAX_TRANSITIONS) {
-            transitions[transitionCount++] = {from, to, condition};
-        }
-    }
-
-    void update() {
-        if (currentState) {
-            for (int i = 0; i < transitionCount; ++i) {
-                const Transition& transition = transitions[i];
-                if (transition.from == currentState && transition.condition()) {
-                    setState(transition.to);
-                    return;
-                }
-            }
-            currentState->onUpdate();
-        }
-    }
-
-    bool isInState(const State* state) const {
-        return currentState == state;
-    }
+    void setState(State* state);
+    State* getState() const;
+    void addTransition(State* from, State* to, bool (*condition)(void));
+    void update();
+    bool isInState(const State* state) const;
 
 private:
-    struct Transition {
-        State* from;
-        State* to;
-        bool (*condition)(void);
-    };
-
     State* currentState;
-    Transition transitions[MAX_TRANSITIONS];
+    Transition* transitions;
+    size_t maxTransitions;
     size_t transitionCount;
+};
+
+template <size_t MAX_TRANSITIONS>
+class StateMachine : public StateMachineBase {
+public:
+    StateMachine() : StateMachineBase(storage, MAX_TRANSITIONS) {}
+
+private:
+    Transition storage[MAX_TRANSITIONS];
 };
 
 #endif

@@ -36,11 +36,11 @@ ActiveState activeState;
 
 // Declare condition functions
 bool shouldActivate() {
-  return digitalRead(1, HIGH);
+  return digitalRead(1) == HIGH;
 }
 
 bool shouldIdle() {
-  return digitalRead(1, LOW);
+  return digitalRead(1) == LOW;
 }
 
 void setup() {
