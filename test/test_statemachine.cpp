@@ -83,6 +83,23 @@ TEST(StateMachineTest, TransitionsOnTrueCondition) {
     EXPECT_EQ(state1.updateCount, 0); // Exited before update called
 }
 
+TEST(StateMachineTest, TerminalState) {
+    StateMachine<State, 2> sm;
+    MockState state1;
+    MockState state2;
+    MockCondition condTrue(true);
+
+    sm.addTransition(&state1, &state2, &condTrue, false);
+    sm.setTerminalState(&state2);
+    sm.setState(&state1);
+
+    EXPECT_FALSE(sm.isFinished());
+
+    sm.onUpdate(); // transitions to state2
+
+    EXPECT_TRUE(sm.isFinished());
+}
+
 TEST(StateMachineTest, MaxTransitionsLimit) {
     StateMachine<State, 1> sm;
     MockState state1;
@@ -132,6 +149,7 @@ TEST(StateMachineTest, HierarchicalStateMachine) {
 
     // Child SM setup
     childSM.addTransition(&childState1, &childState2, &condTrue, false);
+    childSM.setTerminalState(&childState2);
     childSM.setState(&childState1);
 
     // Parent SM setup: transition from state1 -> childSM -> state2
@@ -151,11 +169,8 @@ TEST(StateMachineTest, HierarchicalStateMachine) {
     // Update 2: Inside childSM, transitions from childState1 -> childState2
     parentSM.onUpdate();
     EXPECT_EQ(childSM.getState(), &childState2);
-    // At this point, childSM is NOT finished yet
+    // At this point, childSM is indeed finished, but parent updates states before delegating
     EXPECT_EQ(parentSM.getState(), &childSM);
-
-    // Report finishing from childState2
-    childState2.setFinished(true);
 
     // Update 3: parentSM evaluates transitions, childSM is finished -> transitions to state2
     parentSM.onUpdate();

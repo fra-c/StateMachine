@@ -34,7 +34,7 @@ template <typename StateFamily>
 class StateMachineBase : public StateFamily {
 public:
     StateMachineBase(Transition<StateFamily>* transitionsArray, size_t maxTransitions)
-        : currentState(nullptr), transitions(transitionsArray), maxTransitions(maxTransitions), transitionCount(0) {}
+        : currentState(nullptr), terminalState(nullptr), transitions(transitionsArray), maxTransitions(maxTransitions), transitionCount(0) {}
 
     void setState(StateFamily* state) {
         if (currentState) {
@@ -95,8 +95,19 @@ public:
         }
     }
 
+    void setTerminalState(StateFamily* state) {
+        terminalState = state;
+    }
+
     bool isFinished() override {
-        return currentState ? currentState->isFinished() : true;
+        // If we have a terminal state defined, we are finished when we reach it
+        if (terminalState != nullptr) {
+            return currentState == terminalState;
+        }
+
+        // Fallback: If no terminal state is defined, the machine never finishes natively.
+        // It relies on external Orchestrator interruptions.
+        return false;
     }
 
     bool isInState(const StateFamily* state) const {
@@ -111,6 +122,7 @@ private:
     }
 
     StateFamily* currentState;
+    StateFamily* terminalState;
     Transition<StateFamily>* transitions;
     size_t maxTransitions;
     size_t transitionCount;
