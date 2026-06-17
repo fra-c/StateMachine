@@ -13,6 +13,7 @@ public:
     void onExit() override {
         Serial.println("EXIT: IdleState");
     }
+    bool isFinished() override { return true; }
 };
 
 class ActiveState : public State {
@@ -26,11 +27,12 @@ public:
     void onExit() override {
         Serial.println("EXIT: ActiveState");
     }
+    bool isFinished() override { return true; }
 };
 
 // Instantiate state machine and states
-// The number <2> indicates the number of transitions, see below
-StateMachine<2> stateMachine;
+// The number <State, 2> indicates the state family, and the number of transitions, see below
+StateMachine<State, 2> stateMachine;
 IdleState idleState;
 ActiveState activeState;
 
@@ -54,16 +56,16 @@ void setup() {
   Serial.begin(115200);
 
   // Create transitions.
-  // Remember to increment the number of transitions, (e.g. StateMachine<3>) when you add more transitions
-  stateMachine.addTransition(&idleState, &activeState, &shouldActivate);
-  stateMachine.addTransition(&activeState, &idleState, &shouldIdle);
+  // Remember to increment the number of transitions, (e.g. StateMachine<State, 3>) when you add more transitions
+  stateMachine.addTransition(&idleState, &activeState, &shouldActivate, false);
+  stateMachine.addTransition(&activeState, &idleState, &shouldIdle, false);
 
   // Set initial state
   stateMachine.setState(&idleState);
 }
 
 void loop() {
-  stateMachine.update();
+  stateMachine.onUpdate();
 
   // Add delay for this example only, to prevent too many serial messages
   delay(1000);

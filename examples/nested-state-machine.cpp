@@ -21,11 +21,13 @@ public:
     void onEnter() override { Serial.println("  [Maneuver] Accelerating..."); }
     void onUpdate() override { /* ramp up PWM steadily over time */ }
     void onExit() override { Serial.println("  [Maneuver] Reached top speed."); }
+    bool isFinished() override { return false; }
 };
 
 class CruiseState : public State {
 public:
     void onEnter() override { Serial.println("  [Maneuver] Cruising..."); }
+    bool isFinished() override { return false; }
 };
 
 class DecelerateState : public State {
@@ -39,7 +41,7 @@ public:
         /* decrease PWM down to 0 */
         stopped = true; // Simulating we quickly hit 0 speed
     }
-    void onExit() override { Serial.println("  [Maneuver] Fully stopped."); }
+    void onExit() override { Serial.println("  [Maneuver] Fully stopped. Maneuver finished."); }
 
     // Once speed is 0, this state reports it's finished!
     bool isFinished() override { return stopped; }
@@ -48,16 +50,10 @@ public:
 // Master States
 class IdleState : public State {
 public:
-    void onEnter() override { Serial.println("Robot Idle."); }
+    void onEnter() override { Serial.println("Robot Idle. Waiting for GO signal..."); }
     void onUpdate() override { /* Waiting for command */ }
-};
-
-// Condition to check if a specific state reports it is finished
-class IsFinishedCondition : public Condition {
-    State* state;
-public:
-    IsFinishedCondition(State* s) : state(s) {}
-    bool evaluate() override { return state->isFinished(); }
+    void onExit() override { Serial.println("GO signal received! Leaving Idle."); }
+    bool isFinished() override { return false; }
 };
 
 // Simulated flag for triggering movement
@@ -76,8 +72,8 @@ public:
 
 
 // 1. Declare State Machines
-StateMachine<2> mainSM;
-StateMachine<2> maneuverSM; // Holds 2 internal transitions (Accel->Cruise, Cruise->Decel)
+StateMachine<State, 2> mainSM;
+StateMachine<State, 2> maneuverSM; // Holds 2 internal transitions (Accel->Cruise, Cruise->Decel)
 
 // 2. Declare States
 IdleState idleState;
@@ -89,7 +85,6 @@ DecelerateState decelState;
 TimeoutCondition accelTime(2000);   // Accelerate for 2 seconds
 TimeoutCondition cruiseTime(3000);  // Cruise for 3 seconds
 SignalCondition goSignal;
-IsFinishedCondition maneuverDone(&maneuverSM); // Trigger when the entire nested SM finishes
 
 void setup() {
     Serial.begin(115200);
@@ -98,8 +93,8 @@ void setup() {
     // -------------------------------------------------------------
     // Set up the Nested Maneuver State Machine
     // -------------------------------------------------------------
-    maneuverSM.addTransition(&accelState, &cruiseState, &accelTime);
-    maneuverSM.addTransition(&cruiseState, &decelState, &cruiseTime);
+    maneuverSM.addTransition(&accelState, &cruiseState, &accelTime, false);
+    maneuverSM.addTransition(&cruiseState, &decelState, &cruiseTime, false);
 
     // We don't add a transition OUT of Decelerate inside maneuverSM.
     // Instead, Decelerate overrides `isFinished()` returning true when robot stops.
@@ -109,10 +104,12 @@ void setup() {
     // Set up the Main Application State Machine
     // -------------------------------------------------------------
     // Idle -> maneuverSM
-    mainSM.addTransition(&idleState, &maneuverSM, &goSignal);
+    mainSM.addTransition(&idleState, &maneuverSM, &goSignal, false);
 
     // maneuverSM -> Idle  (Triggered when maneuverSM completes)
-    mainSM.addTransition(&maneuverSM, &idleState, &maneuverDone);
+    // Thanks to the recent updates, we use `nullptr` for the condition (always true)
+    // and `requireFinished=true`! This replaces `IsFinishedCondition` entirely.
+    mainSM.addTransition(&maneuverSM, &idleState, nullptr, true);
 
     // Initial states
     maneuverSM.setState(&accelState); // Sub-machine's default state
@@ -132,3 +129,32 @@ void loop() {
 
     delay(50);
 }
+
+/*
+EXPECTED SERIAL OUTPUT OVER TIME:
+---------------------------------
+
+Starting Hierarchical State Machine Example
+  [Maneuver] Accelerating...              <-- Pre-initialized default internal state of maneuverSM
+Robot Idle. Waiting for GO signal...      <-- Pre-initialized default state of mainSM
+
+(After 50ms loop runs, the 'userPressedGo' signal condition satisfies)
+
+GO signal received! Leaving Idle.
+  [Maneuver] Accelerating...              <-- maneuverSM becomes active, naturally triggering its child's enter()!
+
+(After 2000ms, accelTime condition satisfies)
+
+  [Maneuver] Reached top speed.
+  [Maneuver] Cruising...
+
+(After 3000ms, cruiseTime condition satisfies)
+
+  [Maneuver] Decelerating...
+
+(Shortly after, DecelerateState flags stopped=true, marking maneuverSM as finished)
+
+  [Maneuver] Fully stopped. Maneuver finished. <-- maneuverSM completes, triggering its exit() and child's exit()
+Robot Idle. Waiting for GO signal...           <-- System returns back to Idle!
+*/
+
