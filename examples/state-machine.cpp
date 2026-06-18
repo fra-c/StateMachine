@@ -30,35 +30,22 @@ public:
     bool isFinished() override { return true; }
 };
 
-// Instantiate state machine and states
-// The number <State, 2> indicates the state family, and the number of transitions, see below
-StateMachine<State, 2> stateMachine;
 IdleState idleState;
 ActiveState activeState;
-
-// Define a condition class that checks a pin state
-class PinCondition : public Condition {
-    int _pin;
-    int _targetState;
-public:
-    PinCondition(int pin, int targetState) : _pin(pin), _targetState(targetState) {}
-
-    bool evaluate() override {
-        return digitalRead(_pin) == _targetState;
-    }
-};
 
 // Instantiate the conditions
 PinCondition shouldActivate(1, HIGH);
 PinCondition shouldIdle(1, LOW);
 
+// Instantiate state machine and states
+// The number <State, 2> indicates the state family, and the number of transitions, see below
+StateMachine<State, 2> stateMachine = {{
+  { &idleState, &activeState, &shouldActivate, false },
+  { &activeState, &idleState, &shouldIdle, false }
+}};
+
 void setup() {
   Serial.begin(115200);
-
-  // Create transitions.
-  // Remember to increment the number of transitions, (e.g. StateMachine<State, 3>) when you add more transitions
-  stateMachine.addTransition(&idleState, &activeState, &shouldActivate, false);
-  stateMachine.addTransition(&activeState, &idleState, &shouldIdle, false);
 
   // Set initial state
   stateMachine.setState(&idleState);

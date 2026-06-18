@@ -71,45 +71,31 @@ public:
 };
 
 
-// 1. Declare State Machines
-StateMachine<State, 2> mainSM;
-StateMachine<State, 2> maneuverSM; // Holds 2 internal transitions (Accel->Cruise, Cruise->Decel)
-
-// 2. Declare States
+// 1. Declare States
 IdleState idleState;
 AccelerateState accelState;
 CruiseState cruiseState;
 DecelerateState decelState;
 
-// 3. Declare Conditions
+// 2. Declare Conditions
 TimeoutCondition accelTime(2000);   // Accelerate for 2 seconds
 TimeoutCondition cruiseTime(3000);  // Cruise for 3 seconds
 SignalCondition goSignal;
 
+// 3. Declare State Machines
+StateMachine<State, 2> maneuverSM = {{
+    { &accelState, &cruiseState, &accelTime, false },
+    { &cruiseState, &decelState, &cruiseTime, false }
+}};
+
+StateMachine<State, 2> mainSM = {{
+    { &idleState, &maneuverSM, &goSignal, false },
+    { &maneuverSM, &idleState, nullptr, true }
+}};
+
 void setup() {
     Serial.begin(115200);
     Serial.println("Starting Hierarchical State Machine Example");
-
-    // -------------------------------------------------------------
-    // Set up the Nested Maneuver State Machine
-    // -------------------------------------------------------------
-    maneuverSM.addTransition(&accelState, &cruiseState, &accelTime, false);
-    maneuverSM.addTransition(&cruiseState, &decelState, &cruiseTime, false);
-
-    // We don't add a transition OUT of Decelerate inside maneuverSM.
-    // Instead, Decelerate overrides `isFinished()` returning true when robot stops.
-    // maneuverSM forwards `isFinished` automatically if its active state is finished.
-
-    // -------------------------------------------------------------
-    // Set up the Main Application State Machine
-    // -------------------------------------------------------------
-    // Idle -> maneuverSM
-    mainSM.addTransition(&idleState, &maneuverSM, &goSignal, false);
-
-    // maneuverSM -> Idle  (Triggered when maneuverSM completes)
-    // Thanks to the recent updates, we use `nullptr` for the condition (always true)
-    // and `requireFinished=true`! This replaces `IsFinishedCondition` entirely.
-    mainSM.addTransition(&maneuverSM, &idleState, nullptr, true);
 
     // Initial states
     maneuverSM.setState(&accelState); // Sub-machine's default state
@@ -129,32 +115,3 @@ void loop() {
 
     delay(50);
 }
-
-/*
-EXPECTED SERIAL OUTPUT OVER TIME:
----------------------------------
-
-Starting Hierarchical State Machine Example
-  [Maneuver] Accelerating...              <-- Pre-initialized default internal state of maneuverSM
-Robot Idle. Waiting for GO signal...      <-- Pre-initialized default state of mainSM
-
-(After 50ms loop runs, the 'userPressedGo' signal condition satisfies)
-
-GO signal received! Leaving Idle.
-  [Maneuver] Accelerating...              <-- maneuverSM becomes active, naturally triggering its child's enter()!
-
-(After 2000ms, accelTime condition satisfies)
-
-  [Maneuver] Reached top speed.
-  [Maneuver] Cruising...
-
-(After 3000ms, cruiseTime condition satisfies)
-
-  [Maneuver] Decelerating...
-
-(Shortly after, DecelerateState flags stopped=true, marking maneuverSM as finished)
-
-  [Maneuver] Fully stopped. Maneuver finished. <-- maneuverSM completes, triggering its exit() and child's exit()
-Robot Idle. Waiting for GO signal...           <-- System returns back to Idle!
-*/
-

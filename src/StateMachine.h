@@ -2,6 +2,8 @@
 #define STATE_MACHINE_H
 
 #include <stddef.h>
+#include <array>
+#include <initializer_list>
 
 class State {
 public:
@@ -33,8 +35,8 @@ struct Transition {
 template <typename StateFamily>
 class StateMachineBase : public StateFamily {
 public:
-    StateMachineBase(Transition<StateFamily>* transitionsArray, size_t maxTransitions)
-        : currentState(nullptr), terminalState(nullptr), transitions(transitionsArray), maxTransitions(maxTransitions), transitionCount(0) {}
+    StateMachineBase(size_t maxTransitions)
+        : currentState(nullptr), terminalState(nullptr), transitions(nullptr), maxTransitions(maxTransitions) {}
 
     void setState(StateFamily* state) {
         if (currentState) {
@@ -50,14 +52,9 @@ public:
         return currentState;
     }
 
-    void addTransition(StateFamily* from, StateFamily* to, Condition* condition, bool requireFinished) {
-        if (transitionCount < maxTransitions) {
-            transitions[transitionCount++] = {from, to, condition, requireFinished};
-        }
-    }
-
     bool requestTransition(StateFamily* targetState) {
-        for (size_t i = 0; i < transitionCount; ++i) {
+        for (size_t i = 0; i < maxTransitions; ++i) {
+            if (transitions[i].to == nullptr) continue;
             if (transitions[i].to == targetState && isValidPath(transitions[i])) {
                 if (currentState != targetState) {
                     setState(targetState);
@@ -70,7 +67,8 @@ public:
 
     void onUpdate() override {
         if (currentState) {
-            for (size_t i = 0; i < transitionCount; ++i) {
+            for (size_t i = 0; i < maxTransitions; ++i) {
+                if (transitions[i].to == nullptr) continue;
                 if (isValidPath(transitions[i]) && (transitions[i].condition == nullptr || transitions[i].condition->evaluate())) {
                     // Prevent endless re-entry loops if a global condition stays true
                     if (currentState != transitions[i].to) {
@@ -121,20 +119,31 @@ private:
         return true;
     }
 
+protected:
     StateFamily* currentState;
     StateFamily* terminalState;
-    Transition<StateFamily>* transitions;
+    const Transition<StateFamily>* transitions;
     size_t maxTransitions;
-    size_t transitionCount;
 };
 
 template <typename StateFamily, size_t MAX_TRANSITIONS>
 class StateMachine : public StateMachineBase<StateFamily> {
 public:
-    StateMachine() : StateMachineBase<StateFamily>(storage, MAX_TRANSITIONS) {}
+    // 1. NEW: The Default Constructor (For creating empty machines in your tests)
+    StateMachine() : StateMachineBase<StateFamily>(MAX_TRANSITIONS) {
+        this->transitions = this->_transitions.data();
+    }
+
+    // 2. The Strict Array Constructor (For when you actually have rules)
+    StateMachine(const std::array<Transition<StateFamily>, MAX_TRANSITIONS>& init)
+        : StateMachineBase<StateFamily>(MAX_TRANSITIONS),
+          _transitions(init)
+    {
+        this->transitions = this->_transitions.data();
+    }
 
 private:
-    Transition<StateFamily> storage[MAX_TRANSITIONS];
+    std::array<Transition<StateFamily>, MAX_TRANSITIONS> _transitions{};
 };
 
 #endif
