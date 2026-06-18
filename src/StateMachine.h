@@ -112,6 +112,10 @@ public:
         return currentState == state;
     }
 
+    StateFamily* getCurrentState() const {
+        return currentState;
+    }
+
 private:
     bool isValidPath(const Transition<StateFamily>& transition) const {
         if (transition.from != currentState && transition.from != nullptr) return false;
