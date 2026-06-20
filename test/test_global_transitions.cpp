@@ -1,5 +1,3 @@
-#include <gtest/gtest.h>
-#include "StateMachine.h"
 #include "Mocks.h"
 
 TEST(BasicRouting, GlobalTransitionTriggersFromAnyState) {

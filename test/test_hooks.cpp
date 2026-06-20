@@ -1,5 +1,3 @@
-#include <gtest/gtest.h>
-#include "StateMachine.h"
 #include "Mocks.h"
 
 TEST(BasicRouting, UpdateLoopCallsHooksProperly) {
@@ -9,7 +7,7 @@ TEST(BasicRouting, UpdateLoopCallsHooksProperly) {
     StateMachine<State, 1> sm(
         &stateA,
         {{
-            { &stateA, &stateB, sm::Unconditional(), false }
+            { &stateA, &stateB, Unconditional(), false }
         }}
     );
 
@@ -30,7 +28,7 @@ TEST(BasicRouting, RequestTransitionDoesNotTick) {
     StateMachine<State, 1> sm(
         &stateA,
         {{
-            { &stateA, &stateB, sm::Unconditional(), false }
+            { &stateA, &stateB, Unconditional(), false }
         }}
     );
 

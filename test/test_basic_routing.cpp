@@ -1,5 +1,3 @@
-#include <gtest/gtest.h>
-#include "StateMachine.h"
 #include "Mocks.h"
 
 TEST(BasicRouting, TransitionsWhenConditionIsTrue) {
@@ -9,7 +7,7 @@ TEST(BasicRouting, TransitionsWhenConditionIsTrue) {
     StateMachine<State, 1> sm(
         &stateA,
         {{
-        { &stateA, &stateB, new MockCondition(true), false }
+            { &stateA, &stateB, new MockCondition(true), false }
         }}
     );
 
@@ -25,7 +23,7 @@ TEST(BasicRouting, IgnoreWhenConditionIsFalse) {
     StateMachine<State, 1> sm(
         &stateA,
         {{
-        { &stateA, &stateB, new MockCondition(false), false }
+            { &stateA, &stateB, new MockCondition(false), false }
         }}
     );
 
@@ -42,8 +40,8 @@ TEST(BasicRouting, RespectsArrayPriority) {
     StateMachine<State, 2> sm(
         &stateA,
         {{
-        { &stateA, &stateB, new MockCondition(true), false },
-        { &stateA, &stateC, new MockCondition(true), false }
+            { &stateA, &stateB, new MockCondition(true), false },
+            { &stateA, &stateC, new MockCondition(true), false }
         }}
     );
 
@@ -60,8 +58,8 @@ TEST(BasicRouting, IgnoresUnmatchedFromState) {
     StateMachine<State, 2> sm(
         &stateC,
         {{
-        { &stateA, &stateB, new MockCondition(true), false },
-        { &stateA, &stateC, new MockCondition(true), false }
+            { &stateA, &stateB, new MockCondition(true), false },
+            { &stateA, &stateC, new MockCondition(true), false }
         }}
     );
 

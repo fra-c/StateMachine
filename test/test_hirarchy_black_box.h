@@ -1,5 +1,3 @@
-#include <gtest/gtest.h>
-#include "StateMachine.h"
 #include "Mocks.h"
 
 TEST(StateMachineTest, MachineNotFinishedIfChildNotFinished) {
@@ -12,7 +10,7 @@ TEST(StateMachineTest, MachineNotFinishedIfChildNotFinished) {
     StateMachine<State, 1> childSM(
         &childStateA,
         {{
-            { &childStateA, nullptr, sm::ManualOnly(), false }
+            { &childStateA, nullptr, ManualOnly(), false }
         }}
     );
 
@@ -42,7 +40,7 @@ TEST(StateMachineTest, MachineNotFinishedIfUnconditionalPathExists) {
     StateMachine<State, 1> childSM(
         &childStateA,
         {{
-            { &childStateA, &childStateB, sm::Unconditional(), true }
+            { &childStateA, &childStateB, Unconditional(), true }
         }}
     );
 
@@ -89,13 +87,13 @@ TEST(StateMachineTest, MachineIsFinishedWhenDeadEnded) {
     MockState childStateB;
 
     // 3. Setup the machine.
-    // We give it a path out, BUT we use sm::ManualOnly(). Because ManualOnly
+    // We give it a path out, BUT we use ManualOnly(). Because ManualOnly
     // evaluates to false during the polling loop, there are NO automatic
     // transitions available. This state is a complete dead end.
     StateMachine<State, 1> childSM(
         &childStateA,
         {{
-            { &childStateA, &childStateB, sm::ManualOnly(), false }
+            { &childStateA, &childStateB, ManualOnly(), false }
         }}
     );
 
@@ -114,14 +112,14 @@ TEST(StateMachineTest, ParentTransitionsOutWhenChildFinished) {
 
     StateMachine<State, 1> childSM(
         &childStateA,
-        {{ { &childStateA, &childStateB, sm::ManualOnly(), false } }}
+        {{ { &childStateA, &childStateB, ManualOnly(), false } }}
     );
 
     StateMachine<State, 2> parentSM(
         &parentStateA,
         {{
-            { &parentStateA, &childSM, sm::ManualOnly(), false },
-            { &childSM, &parentStateB, sm::Unconditional(), true }
+            { &parentStateA, &childSM, ManualOnly(), false },
+            { &childSM, &parentStateB, Unconditional(), true }
         }}
     );
 

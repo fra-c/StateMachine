@@ -1,5 +1,6 @@
 #pragma once
 #include "StateMachine.h"
+#include <gtest/gtest.h>
 
 using namespace msm;
 

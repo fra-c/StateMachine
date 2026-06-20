@@ -1,4 +1,4 @@
-# Embedded C++ Hierarchical State Machine
+# Minimalist State Machine
 
 A lightweight, header-only, zero-allocation state machine library designed specifically for microcontrollers and embedded systems.
 
@@ -9,7 +9,7 @@ This library provides a mathematically sound routing engine that supports event-
 * **Zero Dynamic Allocation:** Built entirely on templates and `std::array`. Perfect for strict embedded environments.
 * **Hierarchical (Nested) Machines:** A State Machine inherits from `State`, meaning a parent machine can seamlessly orchestrate child machines exactly like standard states.
 * **Deterministic Routing:** Array-order evaluation guarantees predictable priority for emergency interrupts over normal flow.
-* **Built-in Routing Singletons:** Includes `sm::Unconditional()` and `sm::ManualOnly()` for memory-free sequential and event-driven routing.
+* **Built-in Routing Singletons:** Includes `Unconditional()` and `ManualOnly()` for memory-free sequential and event-driven routing.
 
 ---
 
@@ -34,6 +34,8 @@ Here is the simplest use case: A basic Heater that turns on when a button is pre
 ```cpp
 #include "StateMachine.h"
 
+using namespace msm;
+
 // 1. Define your base state family
 class HeaterState : public State { /* ... */ };
 
@@ -53,7 +55,7 @@ StateMachine<HeaterState, 2> heaterSM(
         { &idle, &heating, &buttonPressed, false },
 
         // Go from Heating -> Idle unconditionally, BUT only when Heating is finished
-        { &heating, &idle, sm::Unconditional(), true }
+        { &heating, &idle, Unconditional(), true }
     }}
 );
 
@@ -82,13 +84,13 @@ StateMachine<DriveState, 4> driveSM(
 
         // --- PRIORITY 2: NORMAL FLOW ---
         // 1. Start moving manually via an external request (e.g., RPC/UI)
-        { &stationary, &rampingUp, sm::ManualOnly(), false },
+        { &stationary, &rampingUp, ManualOnly(), false },
 
         // 2. Automatically go to Cruise ONLY when Ramping Up is physically finished
-        { &rampingUp, &cruise, sm::Unconditional(), true },
+        { &rampingUp, &cruise, Unconditional(), true },
 
         // 3. Manually trigger braking via an external request
-        { &cruise, &slowingDown, sm::ManualOnly(), false }
+        { &cruise, &slowingDown, ManualOnly(), false }
     }}
 );
 
@@ -113,8 +115,8 @@ StateMachine<RobotState, 2> parallelParkSM(
     &aligning,
     {{
         // Internal child sequence
-        { &aligning, &reversing, sm::Unconditional(), true },
-        { &reversing, &straightening, sm::Unconditional(), true }
+        { &aligning, &reversing, Unconditional(), true },
+        { &reversing, &straightening, Unconditional(), true }
         // When 'straightening' finishes, this child machine has nowhere else to go.
         // It will automatically report isFinished() == true to the parent.
     }}
@@ -128,7 +130,7 @@ StateMachine<RobotState, 3> roverOrchestratorSM(
         { &navigating, &parallelParkSM, &spotFoundCond, false },
 
         // 2. When the parking machine is completely finished, shut down the rover
-        { &parallelParkSM, &shutDown, sm::Unconditional(), true },
+        { &parallelParkSM, &shutDown, Unconditional(), true },
 
         // 3. Global Safety: Abort everything and wait for human help if battery dies
         { nullptr, &idleAwaitingHelp, &batteryDeadCond, false }
@@ -141,3 +143,70 @@ void hardware_timer_tick() {
 }
 
 ```
+
+## 4. Interoperability: The "Universal Translator" Adapters
+
+In a well-architected embedded system, your core domain classes (e.g., a `BatteryMonitor`, a `Kinematics` calculator, or third-party sensor drivers) should remain **domain-pure**—they should never be forced to `#include <StateMachine.h>` just to act as transition triggers.
+
+To achieve 100% decoupling, `msm` ships with three zero-cost adapter templates that allow the State Machine to adopt almost any external logic as a valid transition condition.
+
+### Option A: `msm::ConditionAdapter<T>`
+
+**Best for:** *Domain classes that naturally implement a `bool evaluate()` method.*
+
+```cpp
+// 1. A domain-pure OS class (100% ignorant of the state machine library)
+class BatteryMonitor {
+public:
+    bool evaluate() const { return read_vbat_pin() < 3.2f; }
+} vbatMonitor;
+
+// 2. Bridge it at the final instantiation site
+static msm::ConditionAdapter<BatteryMonitor> vbatGuard(&vbatMonitor);
+
+// Inside table:
+{ &driving, &lowPowerShutdown, &vbatGuard, false }
+
+```
+
+### Option B: `msm::MethodAdapter<T>`
+
+**Best for:** *Third-party drivers or objects whose boolean methods have custom names.*
+
+```cpp
+// 1. A 3rd-party IMU driver with custom method names
+class SparkFun_BNO080 {
+public:
+    bool wasTippedOver() { return get_roll() > 75.0f; }
+} imu;
+
+// 2. Bind the object instance directly to the specific method address
+static msm::MethodAdapter<SparkFun_BNO080> tipGuard(&imu, &SparkFun_BNO080::wasTippedOver);
+
+// Inside table:
+{ &driving, &rolledOverCrash, &tipGuard, false }
+
+```
+
+### Option C: `msm::FunctionAdapter`
+
+**Best for:** *Raw C-style HAL checks, RTOS hooks, or global functions.*
+
+```cpp
+// 1. A raw C-style hardware read
+bool is_eStop_pressed() {
+    return digitalRead(ESTOP_PIN) == LOW;
+}
+
+// 2. Wrap the raw function pointer
+static msm::FunctionAdapter eStopGuard(is_eStop_pressed);
+
+// Inside table (Global transition from ANY state):
+{ nullptr, &emergencyStop, &eStopGuard, false }
+
+```
+
+> ### ⚠️ Memory Allocation Best Practice
+>
+>
+> You *can* technically construct these adapters inline inside your transition table using the `new` keyword (e.g., `new msm::FunctionAdapter(is_eStop_pressed)`). However, doing so forces the microcontroller to issue a 4-byte heap allocation during boot. **To preserve the library's strict 0-byte heap guarantee, always declare your adapters as `static` or global instances**, exactly as shown in the examples above.

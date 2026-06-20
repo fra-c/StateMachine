@@ -7,6 +7,10 @@
 
 namespace msm {
 
+/**
+ * State is an abstract base class that defines the interface for states in the state
+ * machine. Users of the library should derive their own state classes from this base class.
+ */
 class State {
 public:
     virtual ~State() = default;
@@ -14,18 +18,25 @@ public:
     virtual void onEnter() {}
     virtual void onUpdate() {}
     virtual void onExit() {}
-
-    // The "= 0" means this class cannot be instantiated.
-    // Every child class MUST define this, or the code will not compile.
     virtual bool isFinished() = 0;
 };
 
+/**
+ * Condition is an abstract base class that defines the interface for conditions in the state
+ * machine. Users of the library could derive their own condition classes from this base class or use the provided
+ * adapters to adapt existing classes or functions.
+ */
 class Condition {
 public:
     virtual ~Condition() = default;
     virtual bool evaluate() = 0;
 };
 
+/**
+ * Transition represents a state transition in the state machine.
+ * It contains the source state, the target state, the condition that must be met for the transition to occur,
+ * and a flag indicating whether the source state must be finished before the transition can occur.
+ */
 template <typename StateFamily>
 struct Transition {
     StateFamily* from;
@@ -34,6 +45,10 @@ struct Transition {
     bool requireFinished;
 };
 
+/**
+ * StateMachineBase is a base class for the state machine that manages state transitions and updates.
+ * It is templated on the StateFamily type, which should be derived from the State class
+ */
 template <typename StateFamily>
 class StateMachineBase : public StateFamily {
 public:
@@ -109,6 +124,11 @@ protected:
     size_t maxTransitions;
 };
 
+/**
+ * StateMachine is a concrete implementation of the state machine that manages state transitions and updates.
+ * It is templated on the StateFamily type, which should be derived from the State class, and the maximum number of
+ * transitions that can be defined in the state machine.
+ */
 template <typename StateFamily, size_t MAX_TRANSITIONS>
 class StateMachine : public StateMachineBase<StateFamily> {
     static_assert(MAX_TRANSITIONS > 0, "A StateMachine MUST have at least one transition defined.");
@@ -127,7 +147,64 @@ private:
     std::array<Transition<StateFamily>, MAX_TRANSITIONS> _transitions{};
 };
 
+/**
+ * ConditionAdapter is a template class that adapts an existing class with an evaluate() method to the Condition
+ * interface. It allows users to use their own classes as conditions in the state machine without having to derive from
+ * the Condition base class.
+ */
+template <typename T>
+class ConditionAdapter : public Condition {
+private:
+    T* _target;
+public:
+    ConditionAdapter(T* target) : _target(target) {}
 
+    bool evaluate() override {
+        return _target->evaluate();
+    }
+};
+
+/**
+ * MethodAdapter is a template class that adapts a member function of an existing class to the Condition interface.
+ * It allows users to use member functions as conditions in the state machine without having to derive from
+ * the Condition base class.
+ */
+template <typename T>
+class MethodAdapter : public Condition {
+private:
+    T* _instance;
+    bool (T::*_method)();
+
+public:
+    MethodAdapter(T* instance, bool (T::*method)())
+        : _instance(instance), _method(method) {}
+
+    bool evaluate() override {
+        return (_instance->*_method)();
+    }
+};
+
+/**
+ * FunctionAdapter is a class that adapts a raw C function pointer to the Condition interface.
+ * It allows users to use standalone functions as conditions in the state machine without having to derive from
+ * the Condition base class.
+ */
+class FunctionAdapter : public Condition {
+private:
+    bool (*_func)(); // Raw C function pointer
+
+public:
+    FunctionAdapter(bool (*func)()) : _func(func) {}
+
+    bool evaluate() override {
+        return _func();
+    }
+};
+
+/**
+ * UnconditionalTransition is a class that represents a transition that is always valid.
+ * It always evaluates to true, allowing the state machine to transition unconditionally.
+ */
 class UnconditionalTransition : public Condition {
 public:
     bool evaluate() override { return true; }
@@ -138,6 +215,10 @@ inline Condition* Unconditional() {
     return &instance;
 }
 
+/**
+ * ManualOnlyTransition is a class that represents a transition that can only be triggered manually.
+ * It always evaluates to false, preventing automatic transitions in the state machine.
+ */
 class ManualOnlyTransition : public Condition {
 public:
     bool evaluate() override { return false; }
