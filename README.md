@@ -1,89 +1,143 @@
-# State Machine
+# Embedded C++ Hierarchical State Machine
 
-A lightweight, zero-allocation, and fully hierarchical state machine library designed for embedded systems (Arduino, ESP32, etc.).
+A lightweight, header-only, zero-allocation state machine library designed specifically for microcontrollers and embedded systems.
+
+This library provides a mathematically sound routing engine that supports event-driven transitions, automatic polling sequences, deep hierarchical nesting (state machines within state machines), and hardware interrupt routing—all without ever touching the heap.
 
 ## Features
-- **Zero Dynamic Allocation:** Predictable memory footprint. Transitions are pre-allocated via C++ templates.
-- **Class-Based Conditions:** Conditions are extensible classes, allowing you to easily store state (like pin numbers or timers).
-- **Hierarchical (Nested) State Machines:** A `StateMachine` inherits from `State`, meaning you can nest sub-state machines inside others to cleanly organize complex behavior.
-- **Global/Any-State Transitions:** Easily handle emergency stops or system-wide events without duplicating transitions for every state.
 
-## Basic Usage
+* **Zero Dynamic Allocation:** Built entirely on templates and `std::array`. Perfect for strict embedded environments.
+* **Hierarchical (Nested) Machines:** A State Machine inherits from `State`, meaning a parent machine can seamlessly orchestrate child machines exactly like standard states.
+* **Deterministic Routing:** Array-order evaluation guarantees predictable priority for emergency interrupts over normal flow.
+* **Built-in Routing Singletons:** Includes `sm::Unconditional()` and `sm::ManualOnly()` for memory-free sequential and event-driven routing.
 
-See the full code in [examples/state-machine.cpp](examples/state-machine.cpp).
+---
+
+## The Transition Table
+
+The core of the engine is the Transition array. Every route in your system is defined by four rules:
+
+| `from` | `to` | `condition` | `requireFinished` |
+| --- | --- | --- | --- |
+| The state you are leaving. | The destination state. | The rule to evaluate. | `true`: Wait for `from` to finish.<br>
+
+<br>`false`: Interrupt immediately. |
+
+> **Note:** Setting `from` to `nullptr` creates a **Global Transition** (can trigger from *any* state).
+
+---
+
+## 1. Quick Start: The Bare Minimum
+
+Here is the simplest use case: A basic Heater that turns on when a button is pressed, and turns off automatically when a target temperature is reached.
 
 ```cpp
-#include <StateMachine.h>
+#include "StateMachine.h"
 
-// 1. Define States
-class IdleState : public State {
-    void onEnter() override { Serial.println("Idling..."); }
-};
-class ActiveState : public State {
-    void onEnter() override { Serial.println("Active!"); }
-};
+// 1. Define your base state family
+class HeaterState : public State { /* ... */ };
 
-// 2. Define Conditions
-class PinCondition : public Condition {
-    int pin, targetState;
-public:
-    PinCondition(int p, int t) : pin(p), targetState(t) {}
-    bool evaluate() override { return digitalRead(pin) == targetState; }
-};
+// 2. Create your states and conditions
+class IdleState : public HeaterState { /* ... */ } idle;
+class HeatingState : public HeaterState { /* ... */ } heating;
 
-// 3. Setup State Machine
-StateMachine<2> sm; // Pre-allocates space for exactly 2 transitions
-IdleState idle;
-ActiveState active;
-PinCondition buttonPressed(1, HIGH);
-PinCondition buttonReleased(1, LOW);
+class ButtonPressedCond : public Condition {
+    bool evaluate() override { return hardware_read_button(); }
+} buttonPressed;
 
-void setup() {
-    sm.addTransition(&idle, &active, &buttonPressed);
-    sm.addTransition(&active, &idle, &buttonReleased);
-    sm.setState(&idle);
-}
+// 3. Define the State Machine
+StateMachine<HeaterState, 2> heaterSM(
+    &idle, // Initial state
+    {{
+        // If button pressed, go from Idle -> Heating immediately
+        { &idle, &heating, &buttonPressed, false },
 
+        // Go from Heating -> Idle unconditionally, BUT only when Heating is finished
+        { &heating, &idle, sm::Unconditional(), true }
+    }}
+);
+
+// 4. Run it in your main loop
 void loop() {
-    sm.onUpdate();
+    heaterSM.onUpdate();
 }
+
 ```
 
-## Advanced Features
+---
 
-### Global (Any-State) Transitions
-Pass `nullptr` as the `from` state to create a transition that can trigger from *any* state. Perfect for error handling or hardware interrupts.
+## 2. Intermediate: Interrupts & Priority Routing
+
+Transition order dictates priority. Place emergency interrupts at the top of your array, and normal operational flow at the bottom.
+
+In this Rover Drive example, an obstacle will instantly interrupt the driving sequence, no matter what state the rover is currently in.
 
 ```cpp
-// Jumps to 'errorState' from anywhere if 'wifiLostCondition' evaluates to true
-sm.addTransition(nullptr, &errorState, &wifiLostCondition);
+StateMachine<DriveState, 4> driveSM(
+    &stationary,
+    {{
+        // --- PRIORITY 1: EMERGENCIES ---
+        // Global Transition (nullptr): Jump to EmergencyStop from ANY state instantly if an obstacle is seen.
+        { nullptr, &emergencyStop, &obstacleDetected, false },
+
+        // --- PRIORITY 2: NORMAL FLOW ---
+        // 1. Start moving manually via an external request (e.g., RPC/UI)
+        { &stationary, &rampingUp, sm::ManualOnly(), false },
+
+        // 2. Automatically go to Cruise ONLY when Ramping Up is physically finished
+        { &rampingUp, &cruise, sm::Unconditional(), true },
+
+        // 3. Manually trigger braking via an external request
+        { &cruise, &slowingDown, sm::ManualOnly(), false }
+    }}
+);
+
+// Example of an external event triggering a manual transition
+void onGoCommandReceived() {
+    driveSM.requestTransition(&rampingUp);
+}
+
 ```
 
-### Hierarchical (Nested) State Machines
-Because the framework treats a `StateMachine` exactly like a `State`, you can nest them directly. The `isFinished()` capability automatically bubbles up out of child machines when a sub-sequence is complete!
+---
 
-See the complete complex robotics maneuver example in [examples/nested-state-machine.cpp](examples/nested-state-machine.cpp).
+## 3. Advanced: Hierarchical Parenting
+
+Because `StateMachine` inherits from your base state, you can plug entire state machines into other state machines.
+
+The parent acts as the orchestrator. It handles the high-level logic and blindly delegates the micro-level updates to the active child machine. When a child machine reaches a dead-end, it automatically reports as "Finished" so the parent can route it elsewhere.
 
 ```cpp
-StateMachine<2> mainSM;
-StateMachine<2> maneuverSM; // Sub-machine
+// --- THE CHILD MACHINE (Micro-level maneuver) ---
+StateMachine<RobotState, 2> parallelParkSM(
+    &aligning,
+    {{
+        // Internal child sequence
+        { &aligning, &reversing, sm::Unconditional(), true },
+        { &reversing, &straightening, sm::Unconditional(), true }
+        // When 'straightening' finishes, this child machine has nowhere else to go.
+        // It will automatically report isFinished() == true to the parent.
+    }}
+);
 
-IsFinishedCondition maneuverDone(&maneuverSM);
+// --- THE PARENT MACHINE (Macro-level orchestrator) ---
+StateMachine<RobotState, 3> roverOrchestratorSM(
+    &navigating,
+    {{
+        // 1. Enter the parking sequence when a spot is found
+        { &navigating, &parallelParkSM, &spotFoundCond, false },
 
-void setup() {
-    // ... setup maneuverSM states and transitions ...
+        // 2. When the parking machine is completely finished, shut down the rover
+        { &parallelParkSM, &shutDown, sm::Unconditional(), true },
 
-    // Jump from Idle to Maneuver sub-machine
-    mainSM.addTransition(&idleState, &maneuverSM, &goSignal);
-    
-    // Return to Idle only when the maneuverSM signals it is finished
-    mainSM.addTransition(&maneuverSM, &idleState, &maneuverDone);
-    
-    mainSM.setState(&idleState);
+        // 3. Global Safety: Abort everything and wait for human help if battery dies
+        { nullptr, &idleAwaitingHelp, &batteryDeadCond, false }
+    }}
+);
+
+// In your hardware timer loop, you only ever tick the top-level parent!
+void hardware_timer_tick() {
+    roverOrchestratorSM.onUpdate();
 }
 
-void loop() {
-    // Automatically ticks down into maneuverSM if active
-    mainSM.onUpdate();
-}
 ```

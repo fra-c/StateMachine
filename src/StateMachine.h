@@ -5,6 +5,8 @@
 #include <array>
 #include <initializer_list>
 
+namespace msm {
+
 class State {
 public:
     virtual ~State() = default;
@@ -35,18 +37,8 @@ struct Transition {
 template <typename StateFamily>
 class StateMachineBase : public StateFamily {
 public:
-    StateMachineBase(size_t maxTransitions)
-        : currentState(nullptr), terminalState(nullptr), transitions(nullptr), maxTransitions(maxTransitions) {}
-
-    void setState(StateFamily* state) {
-        if (currentState) {
-            currentState->onExit();
-        }
-        currentState = state;
-        if (currentState) {
-            currentState->onEnter();
-        }
-    }
+    StateMachineBase(size_t maxTransitions, StateFamily* initialState)
+        : currentState(initialState), initialState(initialState), transitions(nullptr), maxTransitions(maxTransitions) {}
 
     StateFamily* getState() const {
         return currentState;
@@ -66,46 +58,31 @@ public:
     }
 
     void onUpdate() override {
-        if (currentState) {
-            for (size_t i = 0; i < maxTransitions; ++i) {
-                if (transitions[i].to == nullptr) continue;
-                if (isValidPath(transitions[i]) && (transitions[i].condition == nullptr || transitions[i].condition->evaluate())) {
-                    // Prevent endless re-entry loops if a global condition stays true
-                    if (currentState != transitions[i].to) {
-                        setState(transitions[i].to);
-                        return;
-                    }
+        for (size_t i = 0; i < maxTransitions; ++i) {
+            if (transitions[i].to == nullptr) continue;
+            if (isValidPath(transitions[i]) && transitions[i].condition->evaluate()) {
+                // Prevent endless re-entry loops if a global condition stays true
+                if (currentState != transitions[i].to) {
+                    setState(transitions[i].to);
+                    currentState->onUpdate();
+                    return;
                 }
             }
-            currentState->onUpdate();
         }
+        currentState->onUpdate();
     }
 
     void onEnter() override {
-        if (currentState) {
-            currentState->onEnter();
-        }
+        currentState = initialState;
+        currentState->onEnter();
     }
 
     void onExit() override {
-        if (currentState) {
-            currentState->onExit();
-        }
-    }
-
-    void setTerminalState(StateFamily* state) {
-        terminalState = state;
+        currentState->onExit();
     }
 
     bool isFinished() override {
-        // If we have a terminal state defined, we are finished when we reach it
-        if (terminalState != nullptr) {
-            return currentState == terminalState;
-        }
-
-        // Fallback: If no terminal state is defined, the machine never finishes natively.
-        // It relies on external Orchestrator interruptions.
-        return false;
+        return currentState->isFinished();
     }
 
     bool isInState(const StateFamily* state) const {
@@ -119,31 +96,58 @@ private:
         return true;
     }
 
+    void setState(StateFamily* state) {
+        currentState->onExit();
+        currentState = state;
+        currentState->onEnter();
+    }
+
 protected:
     StateFamily* currentState;
-    StateFamily* terminalState;
+    StateFamily* initialState;
     const Transition<StateFamily>* transitions;
     size_t maxTransitions;
 };
 
 template <typename StateFamily, size_t MAX_TRANSITIONS>
 class StateMachine : public StateMachineBase<StateFamily> {
-public:
-    // 1. NEW: The Default Constructor (For creating empty machines in your tests)
-    StateMachine() : StateMachineBase<StateFamily>(MAX_TRANSITIONS) {
-        this->transitions = this->_transitions.data();
-    }
+    static_assert(MAX_TRANSITIONS > 0, "A StateMachine MUST have at least one transition defined.");
 
-    // 2. The Strict Array Constructor (For when you actually have rules)
-    StateMachine(const std::array<Transition<StateFamily>, MAX_TRANSITIONS>& init)
-        : StateMachineBase<StateFamily>(MAX_TRANSITIONS),
+public:
+    StateMachine(StateFamily* initialState,
+                 const std::array<Transition<StateFamily>, MAX_TRANSITIONS>& init)
+        : StateMachineBase<StateFamily>(MAX_TRANSITIONS, initialState),
           _transitions(init)
     {
         this->transitions = this->_transitions.data();
+        this->currentState->onEnter();
     }
 
 private:
     std::array<Transition<StateFamily>, MAX_TRANSITIONS> _transitions{};
 };
+
+
+class UnconditionalTransition : public Condition {
+public:
+    bool evaluate() override { return true; }
+};
+
+inline Condition* Unconditional() {
+    static UnconditionalTransition instance;
+    return &instance;
+}
+
+class ManualOnlyTransition : public Condition {
+public:
+    bool evaluate() override { return false; }
+};
+
+inline Condition* ManualOnly() {
+    static ManualOnlyTransition instance;
+    return &instance;
+}
+
+}// namespace msm
 
 #endif
