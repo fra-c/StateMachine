@@ -18,7 +18,57 @@ public:
     virtual void onEnter() {}
     virtual void onUpdate() {}
     virtual void onExit() {}
-    virtual bool isFinished() = 0;
+    virtual bool isFinished() { return _isFinished; }
+
+    void setFinished(bool finished) { _isFinished = finished; }
+protected:
+    bool _isFinished = false;
+};
+
+/**
+ * ParallelState implements Orthogonal Regions (concurrent state machines).
+ * It acts as a single composite State that manages multiple independent sub-machines
+ * running in parallel without relying on the heap.
+ */
+template <typename StateFamily, size_t NUM_REGIONS>
+class ParallelState : public StateFamily {
+    static_assert(NUM_REGIONS > 0, "A ParallelState MUST manage at least one orthogonal region.");
+
+public:
+    // API requires an array of reference_wrappers
+    constexpr ParallelState(const std::array<std::reference_wrapper<StateFamily>, NUM_REGIONS>& regions)
+        : _regions(regions) {}
+
+    void onEnter() override {
+        for (size_t i = 0; i < NUM_REGIONS; ++i) {
+            // We use .get() to unwrap the reference safely. No null checks needed!
+            _regions[i].get().onEnter();
+        }
+    }
+
+    void onUpdate() override {
+        for (size_t i = 0; i < NUM_REGIONS; ++i) {
+            _regions[i].get().onUpdate();
+        }
+    }
+
+    void onExit() override {
+        for (size_t i = 0; i < NUM_REGIONS; ++i) {
+            _regions[i].get().onExit();
+        }
+    }
+
+    bool isFinished() override {
+        for (size_t i = 0; i < NUM_REGIONS; ++i) {
+            if (!_regions[i].get().isFinished()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+private:
+    std::array<std::reference_wrapper<StateFamily>, NUM_REGIONS> _regions;
 };
 
 /**
@@ -43,6 +93,18 @@ struct Transition {
     StateFamily* to;
     Condition* condition;
     bool requireFinished;
+
+    constexpr Transition(StateFamily& f, StateFamily& t, Condition& c, bool r = false)
+        : from(&f), to(&t), condition(&c), requireFinished(r) {}
+
+    // 2. WILDCARD CONSTRUCTOR: Omits 'from' entirely.
+    // Automatically sets 'from' to nullptr internally.
+    constexpr Transition(StateFamily& t, Condition& c, bool r = false)
+        : from(nullptr), to(&t), condition(&c), requireFinished(r) {}
+
+    // 3. PADDING CONSTRUCTOR: Kept strictly for std::array zero-initialization
+    constexpr Transition()
+        : from(nullptr), to(nullptr), condition(nullptr), requireFinished(false) {}
 };
 
 /**
@@ -52,19 +114,22 @@ struct Transition {
 template <typename StateFamily>
 class StateMachineBase : public StateFamily {
 public:
-    StateMachineBase(size_t maxTransitions, StateFamily* initialState)
-        : currentState(initialState), initialState(initialState), transitions(nullptr), maxTransitions(maxTransitions) {}
+    // FIX: Require a strict reference
+    StateMachineBase(size_t maxTransitions, StateFamily& initialState)
+        : currentState(&initialState), initialState(&initialState), transitions(nullptr), maxTransitions(maxTransitions) {}
 
     StateFamily* getState() const {
         return currentState;
     }
 
-    bool requestTransition(StateFamily* targetState) {
+    // FIX: Require a strict reference to match the new No-Null API
+    bool requestTransition(StateFamily& targetState) {
         for (size_t i = 0; i < maxTransitions; ++i) {
             if (transitions[i].to == nullptr) continue;
-            if (transitions[i].to == targetState && isValidPath(transitions[i])) {
-                if (currentState != targetState) {
-                    setState(targetState);
+
+            if (transitions[i].to == &targetState && isValidPath(transitions[i])) {
+                if (currentState != &targetState) {
+                    setState(targetState); // Safely passes the reference
                 }
                 return true;
             }
@@ -74,11 +139,14 @@ public:
 
     void onUpdate() override {
         for (size_t i = 0; i < maxTransitions; ++i) {
-            if (transitions[i].to == nullptr) continue;
+            if (transitions[i].to == nullptr) {
+                continue;
+            }
+
             if (isValidPath(transitions[i]) && transitions[i].condition->evaluate()) {
                 // Prevent endless re-entry loops if a global condition stays true
                 if (currentState != transitions[i].to) {
-                    setState(transitions[i].to);
+                    setState(*transitions[i].to);
                     currentState->onUpdate();
                     return;
                 }
@@ -89,6 +157,7 @@ public:
 
     void onEnter() override {
         currentState = initialState;
+        currentState->setFinished(false);
         currentState->onEnter();
     }
 
@@ -97,23 +166,39 @@ public:
     }
 
     bool isFinished() override {
-        return currentState->isFinished();
+        if (!currentState->isFinished()) {
+            return false;
+        }
+        for (size_t i = 0; i < maxTransitions; ++i) {
+            if (transitions[i].to == nullptr) {
+                continue;
+            }
+            if (isValidPath(transitions[i])) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    bool isInState(const StateFamily* state) const {
-        return currentState == state;
+    bool isInState(const StateFamily& state) const {
+        return currentState == &state;
     }
 
 private:
     bool isValidPath(const Transition<StateFamily>& transition) const {
-        if (transition.from != currentState && transition.from != nullptr) return false;
-        if (transition.requireFinished && currentState && !currentState->isFinished()) return false;
+        if (transition.from != currentState && transition.from != nullptr) {
+            return false;
+        }
+        if (transition.requireFinished && !currentState->isFinished()) {
+            return false;
+        }
         return true;
     }
 
-    void setState(StateFamily* state) {
+    void setState(StateFamily& state) {
         currentState->onExit();
-        currentState = state;
+        currentState = &state;
+        currentState->setFinished(false);
         currentState->onEnter();
     }
 
@@ -134,7 +219,7 @@ class StateMachine : public StateMachineBase<StateFamily> {
     static_assert(MAX_TRANSITIONS > 0, "A StateMachine MUST have at least one transition defined.");
 
 public:
-    StateMachine(StateFamily* initialState,
+    StateMachine(StateFamily& initialState,
                  const std::array<Transition<StateFamily>, MAX_TRANSITIONS>& init)
         : StateMachineBase<StateFamily>(MAX_TRANSITIONS, initialState),
           _transitions(init)
@@ -210,9 +295,10 @@ public:
     bool evaluate() override { return true; }
 };
 
-inline Condition* Unconditional() {
+// FIX: Return a reference to match the new Transition constructor
+inline Condition& Unconditional() {
     static UnconditionalTransition instance;
-    return &instance;
+    return instance;
 }
 
 /**
@@ -224,9 +310,10 @@ public:
     bool evaluate() override { return false; }
 };
 
-inline Condition* ManualOnly() {
+// FIX: Return a reference to match the new Transition constructor
+inline Condition& ManualOnly() {
     static ManualOnlyTransition instance;
-    return &instance;
+    return instance;
 }
 
 }// namespace msm

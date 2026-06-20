@@ -4,50 +4,56 @@ TEST(BasicRouting, BlocksIfRequireFinishedAndStateNotFinished) {
     MockState stateA;
     MockState stateB;
 
+    MockCondition trueCond(true);
+
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, new MockCondition(true), true }
+            { stateA, stateB, trueCond, true }
         }}
     );
 
-    stateA.finished = false;
+    stateA.setFinished(false);
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateA), true);
+    EXPECT_TRUE(sm.isInState(stateA));
 }
 
 TEST(BasicRouting, AllowsIfRequireFinishedAndStateIsFinished) {
     MockState stateA;
     MockState stateB;
 
+    MockCondition trueCond(true);
+
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, new MockCondition(true), true }
+            { stateA, stateB, trueCond, true }
         }}
     );
 
-    stateA.finished = true;
+    stateA.setFinished(true);
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(BasicRouting, InterruptsIfRequireFinishedIsFalse) {
     MockState stateA;
     MockState stateB;
 
+    MockCondition trueCond(true);
+
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, new MockCondition(true), false }
+            { stateA, stateB, trueCond, false }
         }}
     );
 
-    stateA.finished = false;
+    stateA.setFinished(false);
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 

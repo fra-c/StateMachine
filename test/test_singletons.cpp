@@ -5,15 +5,15 @@ TEST(BasicRouting, UnconditionalTransitionsAutomatically) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, Unconditional(), false }
+            { stateA, stateB, Unconditional(), false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(BasicRouting, ManualOnlyIsIgnoredByUpdateLoop) {
@@ -21,15 +21,15 @@ TEST(BasicRouting, ManualOnlyIsIgnoredByUpdateLoop) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, ManualOnly(), false }
+            { stateA, stateB, ManualOnly(), false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateA), true);
+    EXPECT_TRUE(sm.isInState(stateA));
 }
 
 TEST(BasicRouting, RequestTransitionSucceedsWithManualOnly) {
@@ -37,14 +37,14 @@ TEST(BasicRouting, RequestTransitionSucceedsWithManualOnly) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, ManualOnly(), false }
+            { stateA, stateB, ManualOnly(), false }
         }}
     );
 
-    EXPECT_EQ(sm.requestTransition(&stateB), true);
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.requestTransition(stateB));
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(BasicRouting, RequestTransitionFailsIfNoValidPath) {
@@ -53,12 +53,12 @@ TEST(BasicRouting, RequestTransitionFailsIfNoValidPath) {
     MockState stateC;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, ManualOnly(), false }
+            { stateA, stateB, ManualOnly(), false }
         }}
     );
 
-    EXPECT_EQ(sm.requestTransition(&stateC), false);
-    EXPECT_EQ(sm.isInState(&stateA), true);
+    EXPECT_FALSE(sm.requestTransition(stateC));
+    EXPECT_TRUE(sm.isInState(stateA));
 }

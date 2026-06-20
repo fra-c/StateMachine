@@ -4,24 +4,25 @@ TEST(BasicRouting, GlobalTransitionTriggersFromAnyState) {
     MockState stateA;
     MockState stateB;
     MockState emergencyState;
+    MockCondition trueCond(true);
 
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { nullptr, &emergencyState, new MockCondition(true), false },
-            { &emergencyState, &stateB, new MockCondition(true), false }
+            { emergencyState, trueCond, false },
+            { emergencyState, stateB, trueCond, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&emergencyState), true);
+    EXPECT_TRUE(sm.isInState(emergencyState));
 
-    sm.requestTransition(&stateB);
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    sm.requestTransition(stateB);
+    EXPECT_TRUE(sm.isInState(stateB));
 
     sm.onUpdate();
-    EXPECT_EQ(sm.isInState(&emergencyState), true);
+    EXPECT_TRUE(sm.isInState(emergencyState));
 }
 
 TEST(BasicRouting, GlobalTransitionOverridesLowerSpecificTransitions) {
@@ -29,17 +30,19 @@ TEST(BasicRouting, GlobalTransitionOverridesLowerSpecificTransitions) {
     MockState stateB;
     MockState emergencyState;
 
+    MockCondition mockCond(true);
+
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { nullptr, &emergencyState, new MockCondition(true), false },
-            { &stateA, &stateB, new MockCondition(true), false }
+            { emergencyState, mockCond, false },
+            { stateA, stateB, mockCond, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&emergencyState), true);
+    EXPECT_TRUE(sm.isInState(emergencyState));
 }
 
 TEST(BasicRouting, GlobalTransitionIgnoredIfConditionFalse) {
@@ -47,53 +50,41 @@ TEST(BasicRouting, GlobalTransitionIgnoredIfConditionFalse) {
     MockState stateB;
     MockState emergencyState;
 
+    MockCondition trueCond(true);
+    MockCondition falseCond(false);
+
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { nullptr, &emergencyState, new MockCondition(false), false },
-            { &stateA, &stateB, new MockCondition(true), false }
+            { emergencyState, falseCond, false },
+            { stateA, stateB, trueCond, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(BasicRouting, GlobalTransitionRespectsRequireFinished) {
     MockState stateA;
     MockState fallbackState;
+    MockCondition trueCond(true);
 
     StateMachine<State, 2> sm(
-        &stateA,
+        stateA,
         {{
-            { nullptr, &fallbackState, new MockCondition(true), true }
+            { fallbackState, trueCond, true }
         }}
     );
 
-    stateA.finished = false;
+    stateA.setFinished(false);
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateA), true);
+    EXPECT_TRUE(sm.isInState(stateA));
 
-    stateA.finished = true;
+    stateA.setFinished(true);
     sm.onUpdate();
-    EXPECT_EQ(sm.isInState(&fallbackState), true);
+    EXPECT_TRUE(sm.isInState(fallbackState));
 }
 
-TEST(BasicRouting, RejectsToAnywhereWildcard) {
-    MockState stateA;
-    MockState stateB;
-
-    StateMachine<State, 2> sm(
-        &stateA,
-        {{
-        { &stateA, nullptr, new MockCondition(true), false },
-        { &stateA, &stateB, new MockCondition(true), false }
-        }}
-    );
-
-    sm.onUpdate();
-
-    EXPECT_EQ(sm.isInState(&stateB), true);
-}

@@ -26,15 +26,15 @@ TEST(ConditionAdapter, AdapterEvaluatesTargetCondition) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, &adapter, false }
+            { stateA, stateB, adapter, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(MethodAdapter, AdapterEvaluatesTargetMethod) {
@@ -45,15 +45,15 @@ TEST(MethodAdapter, AdapterEvaluatesTargetMethod) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, &adapter, false }
+            { stateA, stateB, adapter, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }
 
 TEST(FunctionAdapter, AdapterEvaluatesTargetFunction) {
@@ -63,13 +63,13 @@ TEST(FunctionAdapter, AdapterEvaluatesTargetFunction) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, &adapter, false }
+            { stateA, stateB, adapter, false }
         }}
     );
 
     sm.onUpdate();
 
-    EXPECT_EQ(sm.isInState(&stateB), true);
+    EXPECT_TRUE(sm.isInState(stateB));
 }

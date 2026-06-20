@@ -5,9 +5,9 @@ TEST(BasicRouting, UpdateLoopCallsHooksProperly) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, Unconditional(), false }
+            { stateA, stateB, Unconditional(), false }
         }}
     );
 
@@ -26,13 +26,13 @@ TEST(BasicRouting, RequestTransitionDoesNotTick) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {{
-            { &stateA, &stateB, Unconditional(), false }
+            { stateA, stateB, Unconditional(), false }
         }}
     );
 
-    sm.requestTransition(&stateB);
+    sm.requestTransition(stateB);
 
     EXPECT_EQ(stateA.exitCount, 1);
     EXPECT_EQ(stateB.enterCount, 1);
@@ -44,7 +44,7 @@ TEST(BasicRouting, NoUpdateIfNoTransition) {
     MockState stateB;
 
     StateMachine<State, 1> sm(
-        &stateA,
+        stateA,
         {}
     );
 

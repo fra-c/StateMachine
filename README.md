@@ -1,212 +1,221 @@
-# Minimalist State Machine
+# MSM: Minimalist State Machine for Embedded C++
 
-A lightweight, header-only, zero-allocation state machine library designed specifically for microcontrollers and embedded systems.
+**MSM** is a high-performance, strictly zero-allocation Hierarchical State Machine (HSM) library designed specifically for bare-metal embedded systems (ESP32, ARM Cortex-M, Arduino, etc.).
 
-This library provides a mathematically sound routing engine that supports event-driven transitions, automatic polling sequences, deep hierarchical nesting (state machines within state machines), and hardware interrupt routing—all without ever touching the heap.
+It maps complex logical states and concurrent hardware peripherals directly to static memory, guaranteeing `O(1)` execution speed, compile-time safety, and zero heap fragmentation.
 
-## Features
+## ✨ Core Features
 
-* **Zero Dynamic Allocation:** Built entirely on templates and `std::array`. Perfect for strict embedded environments.
-* **Hierarchical (Nested) Machines:** A State Machine inherits from `State`, meaning a parent machine can seamlessly orchestrate child machines exactly like standard states.
-* **Deterministic Routing:** Array-order evaluation guarantees predictable priority for emergency interrupts over normal flow.
-* **Built-in Routing Singletons:** Includes `Unconditional()` and `ManualOnly()` for memory-free sequential and event-driven routing.
+* **Strict Zero-Allocation:** Uses `std::array`, templates, and C++ references. No `new`, no `malloc`, no `std::vector`. Memory is reserved entirely at compile-time on the stack or BSS segment.
 
----
 
-## The Transition Table
+* **Compile-Time Safety:** The API utilizes C++ references at the boundary to make `nullptr` transition targets mathematically impossible, preventing the most common embedded state machine crashes.
 
-The core of the engine is the Transition array. Every route in your system is defined by four rules:
 
-| `from` | `to` | `condition` | `requireFinished` |
-| --- | --- | --- | --- |
-| The state you are leaving. | The destination state. | The rule to evaluate. | `true`: Wait for `from` to finish.<br>
+* **Hierarchical (HSM):** Natively implements the Composite Pattern. A `StateMachine` *is* a `State`, allowing infinite nesting of sub-modes.
 
-<br>`false`: Interrupt immediately. |
 
-> **Note:** Setting `from` to `nullptr` creates a **Global Transition** (can trigger from *any* state).
+* **Orthogonal Regions (Parallel States):** Supports running multiple independent state machines concurrently under a single master state.
+
+
+* **High Performance:** `O(1)` transition routing and zero runtime branching overhead for array padding.
+
+
 
 ---
 
-## 1. Quick Start: The Bare Minimum
+## 🏗️ Architecture Glossary
 
-Here is the simplest use case: A basic Heater that turns on when a button is pressed, and turns off automatically when a target temperature is reached.
+* **`State`**: The abstract base class representing a system mode. Users implement `onEnter()`, `onUpdate()`, `onExit()`, and `isFinished()`.
+
+
+* **`Condition`**: Evaluates to `true` or `false` to trigger transitions. You can use hardware sensors or adapt existing functions using `FunctionAdapter` or `MethodAdapter`.
+
+
+* **`Transition`**: A routing rule defining `[From State] -> [To State]` when `[Condition]` is met.
+
+
+* **`StateMachine`**: The engine evaluating transitions and executing states. It inherits from `State`, meaning it can be nested.
+
+
+* **`ParallelState`**: A wrapper that ticks multiple state machines concurrently, acting as a synchronization barrier that only finishes when *all* internal machines are finished.
+
+
+
+---
+
+## 📖 Usage Examples
+
+### 1. Basic Usage & Wildcard Transitions
+
+Here is a simple machine that toggles an LED based on a hardware button, and includes a global wildcard transition to handle hardware faults.
 
 ```cpp
 #include "StateMachine.h"
 
-using namespace msm;
+// 1. Define your states
+class LedOffState : public msm::State {
+    void onEnter() override { digitalWrite(LED_PIN, LOW); }
+};
 
-// 1. Define your base state family
-class HeaterState : public State { /* ... */ };
+class LedOnState : public msm::State {
+    void onEnter() override { digitalWrite(LED_PIN, HIGH); }
+};
 
-// 2. Create your states and conditions
-class IdleState : public HeaterState { /* ... */ } idle;
-class HeatingState : public HeaterState { /* ... */ } heating;
+class ErrorState : public msm::State {
+    void onEnter() override { /* Sound alarm */ }
+};
 
-class ButtonPressedCond : public Condition {
-    bool evaluate() override { return hardware_read_button(); }
-} buttonPressed;
+// 2. Define conditions (e.g., reading a GPIO pin)
+class ButtonPressedCondition : public msm::Condition {
+    bool evaluate() override { return digitalRead(BTN_PIN) == LOW; }
+};
+MockCondition faultDetected(false); // Example fault condition
 
-// 3. Define the State Machine
-StateMachine<HeaterState, 2> heaterSM(
-    &idle, // Initial state
+// 3. Instantiate objects on the stack or globally (Zero Allocation!)
+LedOffState ledOff;
+LedOnState ledOn;
+ErrorState errorState;
+ButtonPressedCondition btnPressed;
+
+// 4. Create the State Machine
+msm::StateMachine<msm::State, 3> systemSM(
+    ledOff, // Initial state
     {{
-        // If button pressed, go from Idle -> Heating immediately
-        { &idle, &heating, &buttonPressed, false },
+        // STANDARD TRANSITIONS: { From, To, Condition, requireFinished }
+        // Note: All arguments are passed as clean C++ references!
+        { ledOff, ledOn, btnPressed, false },
+        { ledOn, ledOff, btnPressed, false },
 
-        // Go from Heating -> Idle unconditionally, BUT only when Heating is finished
-        { &heating, &idle, Unconditional(), true }
+        // WILDCARD TRANSITION: { To, Condition, requireFinished }
+        // Omitting the 'From' state means this triggers from ANY active state.
+        { errorState, faultDetected, false }
     }}
 );
 
-// 4. Run it in your main loop
 void loop() {
-    heaterSM.onUpdate();
+    systemSM.onUpdate(); // Evaluates conditions and ticks the active state
 }
 
 ```
 
----
+### 2. Hierarchical State Machines (Parenting)
 
-## 2. Intermediate: Interrupts & Priority Routing
-
-Transition order dictates priority. Place emergency interrupts at the top of your array, and normal operational flow at the bottom.
-
-In this Rover Drive example, an obstacle will instantly interrupt the driving sequence, no matter what state the rover is currently in.
+Because `StateMachine` inherits from `State`, you can pass an entire state machine into another state machine as a child. When the parent enters the child machine, the child resets to its initial state.
 
 ```cpp
-StateMachine<DriveState, 4> driveSM(
-    &stationary,
+// ... assume idleState, brewingState, autoMode, manualMode are defined ...
+
+// 1. The Child Machine (Handles a specific sequence)
+msm::StateMachine<msm::State, 2> brewingSM(
+    idleState,
     {{
-        // --- PRIORITY 1: EMERGENCIES ---
-        // Global Transition (nullptr): Jump to EmergencyStop from ANY state instantly if an obstacle is seen.
-        { nullptr, &emergencyStop, &obstacleDetected, false },
-
-        // --- PRIORITY 2: NORMAL FLOW ---
-        // 1. Start moving manually via an external request (e.g., RPC/UI)
-        { &stationary, &rampingUp, ManualOnly(), false },
-
-        // 2. Automatically go to Cruise ONLY when Ramping Up is physically finished
-        { &rampingUp, &cruise, Unconditional(), true },
-
-        // 3. Manually trigger braking via an external request
-        { &cruise, &slowingDown, ManualOnly(), false }
+        { idleState, brewingState, startButton, false },
+        { brewingState, idleState, brewComplete, false }
     }}
 );
 
-// Example of an external event triggering a manual transition
-void onGoCommandReceived() {
-    driveSM.requestTransition(&rampingUp);
-}
+// 2. The Parent Machine (Handles global operating modes)
+msm::StateMachine<msm::State, 2> masterSM(
+    manualMode,
+    {{
+        // Transitioning into the brewingSM automatically calls brewingSM.onEnter()
+        { manualMode, brewingSM, startAutoCondition, false },
+
+        // Exiting brewingSM automatically calls onExit() on whichever child state is active!
+        { brewingSM, manualMode, stopAutoCondition, false }
+    }}
+);
 
 ```
 
----
+### 3. Orthogonal Regions (Parallel States)
 
-## 3. Advanced: Hierarchical Parenting
-
-Because `StateMachine` inherits from your base state, you can plug entire state machines into other state machines.
-
-The parent acts as the orchestrator. It handles the high-level logic and blindly delegates the micro-level updates to the active child machine. When a child machine reaches a dead-end, it automatically reports as "Finished" so the parent can route it elsewhere.
+Use `ParallelState` when you have multiple independent hardware peripherals that must operate simultaneously. A great example is a **Smartwatch** running various background tasks simultaneously.
 
 ```cpp
-// --- THE CHILD MACHINE (Micro-level maneuver) ---
-StateMachine<RobotState, 2> parallelParkSM(
-    &aligning,
-    {{
-        // Internal child sequence
-        { &aligning, &reversing, Unconditional(), true },
-        { &reversing, &straightening, Unconditional(), true }
-        // When 'straightening' finishes, this child machine has nowhere else to go.
-        // It will automatically report isFinished() == true to the parent.
-    }}
-);
+// 1. Create independent peripheral state machines
+msm::StateMachine<msm::State, 2> displaySM(screenOff, /* screen transitions */);
+msm::StateMachine<msm::State, 2> heartRateSM(sensorIdle, /* measuring transitions */);
+msm::StateMachine<msm::State, 2> bluetoothSM(bleDisconnected, /* sync transitions */);
 
-// --- THE PARENT MACHINE (Macro-level orchestrator) ---
-StateMachine<RobotState, 3> roverOrchestratorSM(
-    &navigating,
-    {{
-        // 1. Enter the parking sequence when a spot is found
-        { &navigating, &parallelParkSM, &spotFoundCond, false },
-
-        // 2. When the parking machine is completely finished, shut down the rover
-        { &parallelParkSM, &shutDown, Unconditional(), true },
-
-        // 3. Global Safety: Abort everything and wait for human help if battery dies
-        { nullptr, &idleAwaitingHelp, &batteryDeadCond, false }
-    }}
-);
-
-// In your hardware timer loop, you only ever tick the top-level parent!
-void hardware_timer_tick() {
-    roverOrchestratorSM.onUpdate();
-}
+// 2. Bundle them into a ParallelState
+// This wrapper ensures all 3 machines are ticked concurrently during onUpdate()
+msm::ParallelState<msm::State, 3> activeWatchMode({
+    displaySM,
+    heartRateSM,
+    bluetoothSM
+});
 
 ```
 
-## 4. Interoperability: The "Universal Translator" Adapters
+### 4. Putting It All Together (Parented Parallel States & Graceful Shutdown)
 
-In a well-architected embedded system, your core domain classes (e.g., a `BatteryMonitor`, a `Kinematics` calculator, or third-party sensor drivers) should remain **domain-pure**—they should never be forced to `#include <StateMachine.h>` just to act as transition triggers.
-
-To achieve 100% decoupling, `msm` ships with three zero-cost adapter templates that allow the State Machine to adopt almost any external logic as a valid transition condition.
-
-### Option A: `msm::ConditionAdapter<T>`
-
-**Best for:** *Domain classes that naturally implement a `bool evaluate()` method.*
+This demonstrates a master orchestrator governing concurrent systems on our Smartwatch. It uses `requireFinished = true` to ensure the watch does not instantly power off when the battery dies. Instead, it waits for the `ParallelState` to report that the display, heart-rate sensor, and Bluetooth radio have all safely saved their data and gracefully shut down.
 
 ```cpp
-// 1. A domain-pure OS class (100% ignorant of the state machine library)
-class BatteryMonitor {
+// ... assume displaySM, heartRateSM, and bluetoothSM are defined
+// and have their own internal "Saving Data/Shutting Down" logic ...
+
+// 1. The Concurrent Operating Mode
+msm::ParallelState<msm::State, 3> activeWatchMode({ displaySM, heartRateSM, bluetoothSM });
+
+MockState powerOffState;
+MockState gracefulShutdownWait;
+
+// 2. The Master Orchestrator
+msm::StateMachine<msm::State, 3> masterSM(
+    powerOffState,
+    {{
+        // Boot up the watch -> Starts all subsystems concurrently
+        { powerOffState, activeWatchMode, powerButton, false },
+
+        // Low Battery triggers a move to the waiting state
+        { activeWatchMode, gracefulShutdownWait, lowBatteryEvent, false },
+
+        // WAIT BARRIER: Only transition to PowerOff when activeWatchMode is FINISHED.
+        // ParallelState::isFinished() only returns true when ALL internal machines are finished.
+        { gracefulShutdownWait, powerOffState, msm::Unconditional(), true }
+    }}
+);
+
+```
+
+## 📡 Handling External Commands (WebSockets/Serial)
+
+Unlike physical sensors, network commands are ephemeral events. Do not inject strings or JSON directly into the State Machine. Instead, use a zero-allocation `CommandContext` bridged via a `Condition`.
+
+```cpp
+// 1. A static context to hold the latest network event
+struct CommandContext {
+    int currentCommandId = 0;
+    bool hasNewCommand = false;
+    void clear() { hasNewCommand = false; currentCommandId = 0; }
+};
+
+CommandContext globalCmd;
+
+// 2. A Condition that reads the context
+class CommandCondition : public msm::Condition {
+    CommandContext& ctx;
+    int targetCmd;
 public:
-    bool evaluate() const { return read_vbat_pin() < 3.2f; }
-} vbatMonitor;
+    CommandCondition(CommandContext& c, int target) : ctx(c), targetCmd(target) {}
+    bool evaluate() override { return ctx.hasNewCommand && ctx.currentCommandId == targetCmd; }
+};
 
-// 2. Bridge it at the final instantiation site
-static msm::ConditionAdapter<BatteryMonitor> vbatGuard(&vbatMonitor);
+// 3. Instantiate the conditions
+CommandCondition cmdSyncNow(globalCmd, 12); // Assume ID 12 = Force Sync
 
-// Inside table:
-{ &driving, &lowPowerShutdown, &vbatGuard, false }
-
-```
-
-### Option B: `msm::MethodAdapter<T>`
-
-**Best for:** *Third-party drivers or objects whose boolean methods have custom names.*
-
-```cpp
-// 1. A 3rd-party IMU driver with custom method names
-class SparkFun_BNO080 {
-public:
-    bool wasTippedOver() { return get_roll() > 75.0f; }
-} imu;
-
-// 2. Bind the object instance directly to the specific method address
-static msm::MethodAdapter<SparkFun_BNO080> tipGuard(&imu, &SparkFun_BNO080::wasTippedOver);
-
-// Inside table:
-{ &driving, &rolledOverCrash, &tipGuard, false }
-
-```
-
-### Option C: `msm::FunctionAdapter`
-
-**Best for:** *Raw C-style HAL checks, RTOS hooks, or global functions.*
-
-```cpp
-// 1. A raw C-style hardware read
-bool is_eStop_pressed() {
-    return digitalRead(ESTOP_PIN) == LOW;
+// 4. Feed the context in your WebSocket callback
+void onWebSocketEvent(int incomingCommandId) {
+    globalCmd.currentCommandId = incomingCommandId;
+    globalCmd.hasNewCommand = true;
 }
 
-// 2. Wrap the raw function pointer
-static msm::FunctionAdapter eStopGuard(is_eStop_pressed);
-
-// Inside table (Global transition from ANY state):
-{ nullptr, &emergencyStop, &eStopGuard, false }
+void loop() {
+    masterSM.onUpdate(); // The state machine naturally consumes the event if it's a valid transition
+    globalCmd.clear();   // Clear the context at the end of the loop
+}
 
 ```
-
-> ### ⚠️ Memory Allocation Best Practice
->
->
-> You *can* technically construct these adapters inline inside your transition table using the `new` keyword (e.g., `new msm::FunctionAdapter(is_eStop_pressed)`). However, doing so forces the microcontroller to issue a 4-byte heap allocation during boot. **To preserve the library's strict 0-byte heap guarantee, always declare your adapters as `static` or global instances**, exactly as shown in the examples above.

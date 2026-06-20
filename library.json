@@ -1,6 +1,6 @@
 {
   "name": "Minimalist State Machine",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A lightweight, zero-allocation, and fully hierarchical state machine library designed for embedded systems (Arduino, ESP32, etc.).",
   "keywords": "state, state machine, fsm, minimalist state machine, statemachine, nested state machine, hierarchical state machine, embedded systems, Arduino, ESP32",
   "repository":
