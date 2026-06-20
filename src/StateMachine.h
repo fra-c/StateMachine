@@ -233,56 +233,35 @@ private:
 };
 
 /**
- * ConditionAdapter is a template class that adapts an existing class with an evaluate() method to the Condition
- * interface. It allows users to use their own classes as conditions in the state machine without having to derive from
- * the Condition base class.
- */
-template <typename T>
-class ConditionAdapter : public Condition {
-private:
-    T* _target;
-public:
-    ConditionAdapter(T* target) : _target(target) {}
-
-    bool evaluate() override {
-        return _target->evaluate();
-    }
-};
-
-/**
- * MethodAdapter is a template class that adapts a member function of an existing class to the Condition interface.
+ * ConditionMethodAdapter is a template class that adapts a member function of an existing class to the Condition interface.
  * It allows users to use member functions as conditions in the state machine without having to derive from
  * the Condition base class.
  */
-template <typename T>
-class MethodAdapter : public Condition {
+template <typename T, auto MethodPtr>
+class ConditionMethodAdapter : public Condition {
 private:
     T* _instance;
-    bool (T::*_method)();
 
 public:
-    MethodAdapter(T* instance, bool (T::*method)())
-        : _instance(instance), _method(method) {}
+    // Constructor only needs the instance pointer!
+    ConditionMethodAdapter(T* instance) : _instance(instance) {}
 
     bool evaluate() override {
-        return (_instance->*_method)();
+        // Invokes the compile-time bound method pointer
+        return (_instance->*MethodPtr)();
     }
 };
 
 /**
- * FunctionAdapter is a class that adapts a raw C function pointer to the Condition interface.
+ * ConditionFunctionAdapter is a class that adapts a raw C function pointer to the Condition interface.
  * It allows users to use standalone functions as conditions in the state machine without having to derive from
  * the Condition base class.
  */
-class FunctionAdapter : public Condition {
-private:
-    bool (*_func)(); // Raw C function pointer
-
+template <auto FuncPtr>
+class ConditionFunctionAdapter : public Condition {
 public:
-    FunctionAdapter(bool (*func)()) : _func(func) {}
-
     bool evaluate() override {
-        return _func();
+        return FuncPtr(); // Resolved entirely at compile time!
     }
 };
 

@@ -1,15 +1,8 @@
 #include "Mocks.h"
 
-class ConditionToAdapt {
+class ClassToAdapt {
 public:
-    bool evaluate() {
-        return true;
-    }
-};
-
-class MethodToAdapt {
-public:
-    bool check() {
+    bool check() const {
         return true;
     }
 };
@@ -18,9 +11,9 @@ bool functionToAdapt() {
     return true;
 }
 
-TEST(ConditionAdapter, AdapterEvaluatesTargetCondition) {
-    ConditionToAdapt condition;
-    ConditionAdapter<ConditionToAdapt> adapter(&condition);
+TEST(ConditionMethodAdapter, AdapterEvaluatesTargetMethod) {
+    ClassToAdapt methodTarget;
+    ConditionMethodAdapter<ClassToAdapt, &ClassToAdapt::check> adapter(&methodTarget);
 
     MockState stateA;
     MockState stateB;
@@ -37,27 +30,8 @@ TEST(ConditionAdapter, AdapterEvaluatesTargetCondition) {
     EXPECT_TRUE(sm.isInState(stateB));
 }
 
-TEST(MethodAdapter, AdapterEvaluatesTargetMethod) {
-    MethodToAdapt methodTarget;
-    MethodAdapter<MethodToAdapt> adapter(&methodTarget, &MethodToAdapt::check);
-
-    MockState stateA;
-    MockState stateB;
-
-    StateMachine<State, 1> sm(
-        stateA,
-        {{
-            { stateA, stateB, adapter, false }
-        }}
-    );
-
-    sm.onUpdate();
-
-    EXPECT_TRUE(sm.isInState(stateB));
-}
-
-TEST(FunctionAdapter, AdapterEvaluatesTargetFunction) {
-    FunctionAdapter adapter(&functionToAdapt);
+TEST(ConditionFunctionAdapter, AdapterEvaluatesTargetFunction) {
+    ConditionFunctionAdapter<&functionToAdapt> adapter;
 
     MockState stateA;
     MockState stateB;
