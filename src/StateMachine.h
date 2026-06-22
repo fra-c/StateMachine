@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <array>
 #include <initializer_list>
+#include <type_traits>
 
 namespace msm {
 
@@ -294,6 +295,44 @@ inline Condition& ManualOnly() {
     static ManualOnlyTransition instance;
     return instance;
 }
+
+/**
+ * ChildState is an adapter class that allows a StateMachine belonging to one StateFamily
+ * to be nested as a state inside another StateMachine of a different StateFamily.
+ * This completely decouples parent and child state machines, ensuring type safety.
+ */
+template <typename ParentFamily, typename ChildFamily>
+class ChildState : public ParentFamily {
+    static_assert(std::is_base_of<State, ParentFamily>::value, "ParentFamily must derive from msm::State");
+    static_assert(std::is_base_of<State, ChildFamily>::value, "ChildFamily must derive from msm::State");
+
+public:
+    constexpr ChildState(StateMachineBase<ChildFamily>& childSM)
+        : _childSM(childSM) {}
+
+    void onEnter() override {
+        _childSM.onEnter();
+    }
+
+    void onUpdate() override {
+        _childSM.onUpdate();
+    }
+
+    void onExit() override {
+        _childSM.onExit();
+    }
+
+    bool isFinished() override {
+        return _childSM.isFinished();
+    }
+
+    constexpr StateMachineBase<ChildFamily>& getChildStateMachine() const {
+        return _childSM;
+    }
+
+private:
+    StateMachineBase<ChildFamily>& _childSM;
+};
 
 }// namespace msm
 

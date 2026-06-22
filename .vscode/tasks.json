@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PlatformIO: Test",
+      "type": "shell",
+      "command": "pio test -e native",
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "statusbar": {
+          "label": "$(beaker) Pio Test",
+          "tooltip": "Run PlatformIO tests",
+          "color": "#3399cc"
+        }
+      }
+    },
+    {
+      "label": "PlatformIO: Publish",
+      "type": "shell",
+      "command": "pio pkg publish",
+      "problemMatcher": [],
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "options": {
+        "statusbar": {
+          "label": "$(cloud-upload) Pio Publish",
+          "tooltip": "Publish PlatformIO package",
+          "color": "#d85a00"
+        }
+      }
+    }
+  ]
+}

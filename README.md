@@ -129,6 +129,69 @@ msm::StateMachine<msm::State, 2> masterSM(
 
 ```
 
+### 2.1 Decoupled Hierarchical State Machines (Type Safety & Parent Actions)
+
+When building modular code, you want parent and child state machines to be completely decoupled. Sharing the same `State` family forces them into the same domain and risks type leakage.
+
+To solve this, use `msm::ChildState<ParentFamily, ChildFamily>`. The child state machine uses `ChildFamily` states, while the parent machine orchestrates it as a `ParentFamily` state. This prevents mixing states across machines and allows you to execute parent-specific actions during transitions by overriding `onEnter` / `onExit`.
+
+```cpp
+#include "StateMachine.h"
+
+// 1. Define decoupled state families
+class SystemStateFamily : public msm::State {
+public:
+    virtual void setOperatingMode(const char* mode) {}
+};
+class DriveStateFamily : public msm::State {};
+
+// 2. Define child machine states & child machine
+class DriveIdle : public DriveStateFamily {};
+class DriveActive : public DriveStateFamily {};
+
+DriveIdle driveIdle;
+DriveActive driveActive;
+msm::Condition& btnPressed = msm::Unconditional();
+
+msm::StateMachine<DriveStateFamily, 1> driveSM(
+    driveIdle,
+    {{
+        { driveIdle, driveActive, btnPressed, false }
+    }}
+);
+
+// 3. Create a state in the parent family that wraps the child machine.
+// Subclass ChildState to run parent-specific actions (e.g. updating operating status).
+class SystemDriveState : public msm::ChildState<SystemStateFamily, DriveStateFamily> {
+private:
+    SystemStateFamily& _parentContext;
+public:
+    SystemDriveState(SystemStateFamily& parentContext, msm::StateMachineBase<DriveStateFamily>& child)
+        : msm::ChildState<SystemStateFamily, DriveStateFamily>(child), _parentContext(parentContext) {}
+
+    void onEnter() override {
+        // Parent-specific action (e.g. update system operating status)
+        _parentContext.setOperatingMode("Manual Mode");
+
+        // Delegate to the child machine so it starts
+        msm::ChildState<SystemStateFamily, DriveStateFamily>::onEnter();
+    }
+};
+
+// 4. Instantiate parent machine
+class SystemIdle : public SystemStateFamily {};
+SystemIdle systemIdle;
+SystemDriveState driveState(systemIdle, driveSM);
+
+msm::StateMachine<SystemStateFamily, 1> systemSM(
+    systemIdle,
+    {{
+        { systemIdle, driveState, btnPressed, false }
+    }}
+);
+```
+
+
 ### 3. Orthogonal Regions (Parallel States)
 
 Use `ParallelState` when you have multiple independent hardware peripherals that must operate simultaneously. A great example is a **Smartwatch** running various background tasks simultaneously.
