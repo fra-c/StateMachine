@@ -26,7 +26,7 @@ It maps complex logical states and concurrent hardware peripherals directly to s
 
 ## 🏗️ Architecture Glossary
 
-* **`State`**: The abstract base class representing a system mode. Users implement `onEnter()`, `onUpdate()`, `onExit()`, and `isFinished()`.
+* **`State`**: The abstract base class representing a system mode. Users implement `onEnter()`, `onUpdate(float delta_time = 0.0f)`, `onExit()`, and `isFinished()`.
 
 
 * **`Condition`**: Evaluates to `true` or `false` to trigger transitions. You can use hardware sensors or adapt existing functions using `FunctionAdapter` or `MethodAdapter`.
@@ -94,10 +94,28 @@ msm::StateMachine<msm::State, 3> systemSM(
 );
 
 void loop() {
-    systemSM.onUpdate(); // Evaluates conditions and ticks the active state
+    systemSM.onUpdate(); // Evaluates conditions and ticks the active state (can pass a delta_time if needed)
 }
 
 ```
+
+If your states implement physics calculations, time-based animations, or integrations, you can pass a `delta_time` in seconds (as a `float`). The state machine propagates this parameter all the way down to the active leaf states' `onUpdate(float delta_time)` methods.
+
+For example, you can calculate the delta time using microsecond precision:
+
+```cpp
+unsigned long lastMicros = 0;
+
+void loop() {
+    unsigned long currentMicros = micros();
+    // Handle overflow safely by subtracting first
+    float dt = (currentMicros - lastMicros) / 1000000.0f;
+    lastMicros = currentMicros;
+
+    systemSM.onUpdate(dt);
+}
+```
+
 
 ### 2. Hierarchical State Machines (Parenting)
 

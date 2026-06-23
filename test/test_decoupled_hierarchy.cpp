@@ -17,7 +17,7 @@ public:
     const char* operatingMode = nullptr;
 
     void onEnter() override { enterCount++; }
-    void onUpdate() override { updateCount++; }
+    void onUpdate(float = 0.0f) override { updateCount++; }
     void onExit() override { exitCount++; }
     void setOperatingMode(const char* mode) override { operatingMode = mode; }
 };
@@ -30,7 +30,7 @@ public:
     int exitCount = 0;
 
     void onEnter() override { enterCount++; }
-    void onUpdate() override { updateCount++; }
+    void onUpdate(float = 0.0f) override { updateCount++; }
     void onExit() override { exitCount++; }
 };
 

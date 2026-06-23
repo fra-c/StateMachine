@@ -23,7 +23,7 @@ public:
     virtual ~State() = default;
 
     virtual void onEnter() {}
-    virtual void onUpdate() {}
+    virtual void onUpdate(float delta_time = 0.0f) {}
     virtual void onExit() {}
     virtual bool isFinished() { return _isFinished; }
 
@@ -34,8 +34,8 @@ protected:
     virtual void enter() {
         onEnter();
     }
-    virtual void update() {
-        onUpdate();
+    virtual void update(float delta_time = 0.0f) {
+        onUpdate(delta_time);
     }
     virtual void exit() {
         onExit();
@@ -65,9 +65,9 @@ public:
         }
     }
 
-    void onUpdate() override {
+    void onUpdate(float delta_time = 0.0f) override {
         for (size_t i = 0; i < NUM_REGIONS; ++i) {
-            _regions[i].get().update();
+            _regions[i].get().update(delta_time);
         }
     }
 
@@ -156,7 +156,7 @@ public:
         return false;
     }
 
-    void onUpdate() override {
+    void onUpdate(float delta_time = 0.0f) override {
         for (size_t i = 0; i < maxTransitions; ++i) {
             if (transitions[i].to == nullptr) {
                 continue;
@@ -166,12 +166,12 @@ public:
                 // Prevent endless re-entry loops if a global condition stays true
                 if (currentState != transitions[i].to) {
                     setState(*transitions[i].to);
-                    currentState->update();
+                    currentState->update(delta_time);
                     return;
                 }
             }
         }
-        currentState->update();
+        currentState->update(delta_time);
     }
 
     void onEnter() override {
@@ -343,9 +343,9 @@ protected:
         _childSM.enter();
     }
 
-    void update() override final {
-        this->onUpdate();
-        _childSM.update();
+    void update(float delta_time = 0.0f) override final {
+        this->onUpdate(delta_time);
+        _childSM.update(delta_time);
     }
 
     void exit() override final {

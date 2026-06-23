@@ -11,7 +11,7 @@ public:
     int exitCount = 0;
 
     void onEnter() override { enterCount++; }
-    void onUpdate() override { updateCount++; }
+    void onUpdate(float = 0.0f) override { updateCount++; }
     void onExit() override { exitCount++; }
 };
 
