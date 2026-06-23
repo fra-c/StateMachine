@@ -1,15 +1,13 @@
 {
   "name": "Minimalist State Machine",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "A lightweight, zero-allocation, and fully hierarchical state machine library designed for embedded systems (Arduino, ESP32, etc.).",
   "keywords": "state, state machine, fsm, minimalist state machine, statemachine, nested state machine, hierarchical state machine, embedded systems, Arduino, ESP32",
-  "repository":
-  {
+  "repository": {
     "type": "git",
     "url": "https://github.com/fra-c/StateMachine.git"
   },
-  "authors":
-  [
+  "authors": [
     {
       "name": "Fra-c",
       "email": "fra-c@fmvisual.com",

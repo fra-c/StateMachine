@@ -13,6 +13,12 @@ namespace msm {
  * machine. Users of the library should derive their own state classes from this base class.
  */
 class State {
+    // Friend declarations to allow engine classes to invoke hidden lifecycle wrappers
+    template <typename StateFamily> friend class StateMachineBase;
+    template <typename StateFamily, size_t MAX_TRANSITIONS> friend class StateMachine;
+    template <typename StateFamily, size_t NUM_REGIONS> friend class ParallelState;
+    template <typename ParentFamily, typename ChildFamily> friend class ChildState;
+
 public:
     virtual ~State() = default;
 
@@ -22,7 +28,19 @@ public:
     virtual bool isFinished() { return _isFinished; }
 
     void setFinished(bool finished) { _isFinished = finished; }
+
 protected:
+    // Hidden virtual wrapper methods
+    virtual void enter() {
+        onEnter();
+    }
+    virtual void update() {
+        onUpdate();
+    }
+    virtual void exit() {
+        onExit();
+    }
+
     bool _isFinished = false;
 };
 
@@ -43,19 +61,19 @@ public:
     void onEnter() override {
         for (size_t i = 0; i < NUM_REGIONS; ++i) {
             // We use .get() to unwrap the reference safely. No null checks needed!
-            _regions[i].get().onEnter();
+            _regions[i].get().enter();
         }
     }
 
     void onUpdate() override {
         for (size_t i = 0; i < NUM_REGIONS; ++i) {
-            _regions[i].get().onUpdate();
+            _regions[i].get().update();
         }
     }
 
     void onExit() override {
         for (size_t i = 0; i < NUM_REGIONS; ++i) {
-            _regions[i].get().onExit();
+            _regions[i].get().exit();
         }
     }
 
@@ -148,22 +166,22 @@ public:
                 // Prevent endless re-entry loops if a global condition stays true
                 if (currentState != transitions[i].to) {
                     setState(*transitions[i].to);
-                    currentState->onUpdate();
+                    currentState->update();
                     return;
                 }
             }
         }
-        currentState->onUpdate();
+        currentState->update();
     }
 
     void onEnter() override {
         currentState = initialState;
         currentState->setFinished(false);
-        currentState->onEnter();
+        currentState->enter();
     }
 
     void onExit() override {
-        currentState->onExit();
+        currentState->exit();
     }
 
     bool isFinished() override {
@@ -197,10 +215,10 @@ private:
     }
 
     void setState(StateFamily& state) {
-        currentState->onExit();
+        currentState->exit();
         currentState = &state;
         currentState->setFinished(false);
-        currentState->onEnter();
+        currentState->enter();
     }
 
 protected:
@@ -226,7 +244,7 @@ public:
           _transitions(init)
     {
         this->transitions = this->_transitions.data();
-        this->currentState->onEnter();
+        this->currentState->enter();
     }
 
 private:
@@ -310,24 +328,29 @@ public:
     constexpr ChildState(StateMachineBase<ChildFamily>& childSM)
         : _childSM(childSM) {}
 
-    void onEnter() override {
-        _childSM.onEnter();
-    }
-
-    void onUpdate() override {
-        _childSM.onUpdate();
-    }
-
-    void onExit() override {
-        _childSM.onExit();
-    }
-
     bool isFinished() override {
         return _childSM.isFinished();
     }
 
     constexpr StateMachineBase<ChildFamily>& getChildStateMachine() const {
         return _childSM;
+    }
+
+protected:
+    // Hidden virtual wrapper overrides. Subclasses are prevented from overriding these.
+    void enter() override final {
+        this->onEnter();
+        _childSM.enter();
+    }
+
+    void update() override final {
+        this->onUpdate();
+        _childSM.update();
+    }
+
+    void exit() override final {
+        this->onExit();
+        _childSM.exit();
     }
 
 private:

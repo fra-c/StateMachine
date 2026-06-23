@@ -172,9 +172,6 @@ public:
     void onEnter() override {
         // Parent-specific action (e.g. update system operating status)
         _parentContext.setOperatingMode("Manual Mode");
-
-        // Delegate to the child machine so it starts
-        msm::ChildState<SystemStateFamily, DriveStateFamily>::onEnter();
     }
 };
 

@@ -47,8 +47,6 @@ public:
         // Parent-specific action
         parentTracker.setOperatingMode("DRIVE_MANUAL");
         customEnterCount++;
-        // Delegate to child SM entry
-        msm::ChildState<ParentStateFamily, ChildStateFamily>::onEnter();
     }
 };
 
