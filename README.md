@@ -29,7 +29,7 @@ It maps complex logical states and concurrent hardware peripherals directly to s
 * **`State`**: The abstract base class representing a system mode. Users implement `onEnter()`, `onUpdate(float delta_time = 0.0f)`, `onExit()`, and `isFinished()`.
 
 
-* **`Condition`**: Evaluates to `true` or `false` to trigger transitions. You can use hardware sensors or adapt existing functions using `FunctionAdapter` or `MethodAdapter`.
+* **`Condition`**: Evaluates to `true` or `false` to trigger transitions. You can use hardware sensors, adapt existing functions using `ConditionFunctionAdapter` or `ConditionMethodAdapter`, read boolean fields directly using `ConditionPropertyAdapter`, or negate conditions with `NotCondition`.
 
 
 * **`Transition`**: A routing rule defining `[From State] -> [To State]` when `[Condition]` is met.
